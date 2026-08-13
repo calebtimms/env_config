@@ -100,7 +100,7 @@ cec                   102400  2 drm_display_helper,amdgpu
 nvme_auth              32768  1 nvme_core
 nvidia_uvm           2449408  4
 nvidia_modeset       1921024  27 nvidia_drm
-nvidia              18194432  687 nvidia_uvm,nvidia_modeset
+nvidia              18194432  685 nvidia_uvm,nvidia_modeset
 drm_ttm_helper         20480  3 amdgpu,nvidia_drm
 ttm                   151552  2 amdgpu,drm_ttm_helper
 video                  81920  3 asus_wmi,amdgpu,nvidia_modeset
