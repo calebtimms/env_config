@@ -295,8 +295,6 @@ timedatectl show \
     -p NTP \
     > "$STATE/timedatectl.txt" 2>&1 || true
 
-lsmod > "$STATE/lsmod.txt"
-
 # ---------------------------------------------------------------------------
 # Hardware / filesystem layout
 # ---------------------------------------------------------------------------
@@ -347,7 +345,11 @@ if (( HAVE_SUDO )); then
 
     sudo efibootmgr -v > "$STATE/efibootmgr.txt" 2>&1 || true
 
-    sudo btrfs subvolume list / | awk '$NF !~ /(^|\/)\.snapshots(\/|$)/' > "$STATE/btrfs-subvolumes.txt" 2>&1 || true
+    sudo btrfs subvolume list / \
+        | sed -n 's/.* path //p' \
+        | grep -vE '(^|/)\.snapshots(/|$)' \
+        | LC_ALL=C sort \
+        > "$STATE/btrfs-subvolumes.txt"
 
     if command -v pvs >/dev/null 2>&1; then
         sudo pvs > "$STATE/lvm-pvs.txt" 2>&1 || true

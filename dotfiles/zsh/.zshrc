@@ -70,10 +70,6 @@ bindkey -M emacs '^[k' down-line-or-history
 bindkey -M emacs '^[J' beginning-of-history
 bindkey -M emacs '^[K' end-of-history
 
-# ----- Vim-like history searching -----
-# Alt+/ = search backward through command history
-bindkey -M emacs $'\e/' vi-history-search-backward
-
 # ----- Editing -----
 # Delete previous word
 bindkey -M emacs '^W' backward-kill-word
