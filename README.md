@@ -13,4 +13,4 @@ Configuration and machine-state information used to recreate my Arch Linux envir
 ## Update environment state
 
 ```bash
-envsave
+env_save
