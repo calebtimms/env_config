@@ -1,0 +1,677 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+
+# ---------------------------------------------------------------------------
+# Paths
+# ---------------------------------------------------------------------------
+
+REPO="${ENV_CONFIG_REPO:-$HOME/env_config}"
+
+DOTFILES="$REPO/dotfiles"
+PACKAGES="$REPO/packages"
+USER_CONFIG="$REPO/user"
+SYSTEM_CONFIG="$REPO/system"
+STATE="$REPO/state"
+PATCHES="$REPO/patches"
+
+STAMP="$(date +%Y%m%d-%H%M%S)"
+
+BACKUP_ROOT="$HOME/.local/state/env_config-bootstrap/$STAMP"
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+info()
+{
+    printf '\n--- %s ---\n\n' "$*"
+}
+
+
+warn()
+{
+    printf 'WARNING: %s\n' "$*" >&2
+}
+
+
+die()
+{
+    printf 'ERROR: %s\n' "$*" >&2
+    exit 1
+}
+
+
+confirm()
+{
+    local prompt="$1"
+    local reply
+
+    printf '%s [y/N] ' "$prompt"
+    read -r reply
+
+    [[ "$reply" =~ ^[Yy]$ ]]
+}
+
+
+require_arch()
+{
+    [[ -f /etc/arch-release ]] \
+        || die "This bootstrap is intended for Arch Linux."
+}
+
+
+require_not_root()
+{
+    (( EUID != 0 )) \
+        || die "Run bootstrap as your normal user, not root."
+}
+
+
+backup_user_path()
+{
+    local target="$1"
+    local rel
+    local backup
+
+    [[ -e "$target" || -L "$target" ]] || return 0
+
+    rel="${target#$HOME/}"
+    backup="$BACKUP_ROOT/user/$rel"
+
+    mkdir -p "$(dirname "$backup")"
+
+    cp -a "$target" "$backup"
+}
+
+
+same_entry()
+{
+    local src="$1"
+    local dest="$2"
+
+    if [[ -L "$src" && -L "$dest" ]]; then
+        [[ "$(readlink "$src")" == "$(readlink "$dest")" ]]
+        return
+    fi
+
+    if [[ -f "$src" && -f "$dest" ]]; then
+        cmp -s "$src" "$dest"
+        return
+    fi
+
+    return 1
+}
+
+
+# ---------------------------------------------------------------------------
+# Packages
+# ---------------------------------------------------------------------------
+
+install_official_packages()
+{
+    local -a packages=()
+
+    [[ -f "$PACKAGES/official.txt" ]] \
+        || die "Missing packages/official.txt"
+
+    mapfile -t packages < <(
+        grep -Ev '^[[:space:]]*(#|$)' \
+            "$PACKAGES/official.txt"
+    )
+
+    if (( ${#packages[@]} == 0 )); then
+        info "No official packages to install"
+        return
+    fi
+
+    info "Installing official Arch packages"
+
+    sudo pacman -Syu --needed "${packages[@]}"
+}
+
+
+bootstrap_yay()
+{
+    local helper_pkg="yay"
+    local tmp
+
+    command -v yay >/dev/null 2>&1 && return 0
+
+    if grep -qx 'yay-bin' "$PACKAGES/foreign.txt" 2>/dev/null; then
+        helper_pkg="yay-bin"
+    elif grep -qx 'yay' "$PACKAGES/foreign.txt" 2>/dev/null; then
+        helper_pkg="yay"
+    fi
+
+    warn "yay is not currently installed."
+
+    confirm "Bootstrap $helper_pkg from the AUR?" \
+        || return 1
+
+    sudo pacman -S --needed base-devel git
+
+    tmp="$(mktemp -d)"
+
+    git clone \
+        "https://aur.archlinux.org/${helper_pkg}.git" \
+        "$tmp/$helper_pkg"
+
+    echo
+    echo "Reviewing PKGBUILD before building:"
+    echo
+
+    "${PAGER:-less}" "$tmp/$helper_pkg/PKGBUILD"
+
+    confirm "Build and install $helper_pkg?" || {
+        rm -rf "$tmp"
+        return 1
+    }
+
+    (
+        cd "$tmp/$helper_pkg"
+        makepkg -si
+    )
+
+    rm -rf "$tmp"
+}
+
+
+install_foreign_packages()
+{
+    local -a packages=()
+
+    [[ -f "$PACKAGES/foreign.txt" ]] || return 0
+
+    bootstrap_yay || {
+        warn "Skipping foreign/AUR packages."
+        return
+    }
+
+    mapfile -t packages < <(
+        grep -Ev \
+            '^[[:space:]]*(#|$)|^yay$|^yay-bin$' \
+            "$PACKAGES/foreign.txt"
+    )
+
+    if (( ${#packages[@]} == 0 )); then
+        return
+    fi
+
+    info "Installing foreign / AUR packages"
+
+    yay -S --needed "${packages[@]}"
+}
+
+
+install_code_extensions()
+{
+    [[ -f "$PACKAGES/code-extensions.txt" ]] || return
+
+    if ! command -v code >/dev/null 2>&1; then
+        warn "Code OSS not installed; skipping extensions."
+        return
+    fi
+
+    info "Installing Code extensions"
+
+    while IFS= read -r extension; do
+        [[ -n "$extension" ]] || continue
+
+        echo "$extension"
+
+        code --install-extension "$extension" \
+            >/dev/null 2>&1 \
+            || warn "Could not install extension: $extension"
+
+    done < "$PACKAGES/code-extensions.txt"
+}
+
+
+install_packages()
+{
+    install_official_packages
+    install_foreign_packages
+    install_code_extensions
+}
+
+
+# ---------------------------------------------------------------------------
+# GNU Stow dotfiles
+# ---------------------------------------------------------------------------
+
+backup_stow_conflicts()
+{
+    local package="$1"
+    local item
+    local rel
+    local target
+
+    while IFS= read -r -d '' item; do
+        rel="${item#$DOTFILES/$package/}"
+        target="$HOME/$rel"
+
+        if [[ -e "$target" || -L "$target" ]]; then
+
+            # Already points into our repository.
+            if [[ -L "$target" ]]; then
+                case "$(readlink -f "$target" 2>/dev/null || true)" in
+                    "$DOTFILES/$package/"*)
+                        continue
+                        ;;
+                esac
+            fi
+
+            warn "Backing up conflicting file: $target"
+
+            backup_user_path "$target"
+            rm -rf "$target"
+        fi
+
+    done < <(
+        find "$DOTFILES/$package" \
+            \( -type f -o -type l \) \
+            -print0
+    )
+}
+
+
+restore_dotfiles()
+{
+    local package
+    local name
+
+    command -v stow >/dev/null 2>&1 \
+        || die "GNU Stow is not installed."
+
+    info "Restoring Stow-managed dotfiles"
+
+    for package in "$DOTFILES"/*; do
+        [[ -d "$package" ]] || continue
+
+        name="$(basename "$package")"
+
+        echo "$name"
+
+        backup_stow_conflicts "$name"
+
+        stow \
+            --dir="$DOTFILES" \
+            --target="$HOME" \
+            --restow \
+            "$name"
+    done
+}
+
+
+# ---------------------------------------------------------------------------
+# Vim plugins
+# ---------------------------------------------------------------------------
+
+restore_vim_plugins()
+{
+    local inventory="$STATE/vim-plugin-git.txt"
+
+    local rel
+    local remote
+    local branch
+    local commit
+    local saved_dirty
+
+    local target
+    local name
+    local patch
+
+    [[ -f "$inventory" ]] || {
+        warn "No Vim plugin inventory found."
+        return
+    }
+
+    info "Restoring Vim plugins"
+
+    while IFS=$'\t' read -r \
+        rel remote branch commit saved_dirty
+    do
+        [[ -n "$rel" ]] || continue
+
+        target="$HOME/$rel"
+        name="$(basename "$target")"
+        patch="$PATCHES/vim-${name}.patch"
+
+        echo "$name"
+
+        if [[ -d "$target/.git" ]]; then
+
+            if [[ -n "$(git -C "$target" status --porcelain)" ]]; then
+                warn "$name already contains local changes; leaving it alone."
+                continue
+            fi
+
+            if ! git -C "$target" cat-file -e "${commit}^{commit}" 2>/dev/null; then
+                echo "  fetching missing saved commit"
+                git -C "$target" fetch --all --tags
+            fi
+
+        elif [[ -e "$target" ]]; then
+
+            warn "$target exists but is not a Git repository; skipping."
+            continue
+
+        else
+            mkdir -p "$(dirname "$target")"
+
+            git clone "$remote" "$target"
+        fi
+
+        if [[ "$branch" == "DETACHED" ]]; then
+            git -C "$target" checkout --detach "$commit"
+        else
+            # Keep the plugin on its saved branch while pinning it to
+            # the exact commit recorded by env_save.
+            git -C "$target" checkout -B "$branch" "$commit"
+        
+            # Restore upstream tracking when that branch exists on origin.
+            if git -C "$target" show-ref \
+                --verify \
+                --quiet \
+                "refs/remotes/origin/$branch"
+            then
+                git -C "$target" branch \
+                    --set-upstream-to="origin/$branch" \
+                    "$branch" \
+                    >/dev/null
+            fi
+        fi
+
+        if [[ "$saved_dirty" == "DIRTY" ]]; then
+
+            if [[ -f "$patch" ]]; then
+                echo "  applying $(basename "$patch")"
+
+                git -C "$target" apply "$patch"
+            else
+                warn "$name was DIRTY in the saved environment but no patch exists."
+            fi
+        fi
+
+    done < "$inventory"
+}
+
+
+# ---------------------------------------------------------------------------
+# Saved user configuration
+# ---------------------------------------------------------------------------
+
+restore_user_tree()
+{
+    local src_root="$1"
+
+    local src
+    local rel
+    local target
+
+    [[ -d "$src_root" ]] || return
+
+    while IFS= read -r -d '' src; do
+
+        rel="${src#$src_root/}"
+        target="$HOME/$rel"
+
+        if [[ -d "$src" ]]; then
+            mkdir -p "$target"
+            continue
+        fi
+
+        if [[ -e "$target" || -L "$target" ]]; then
+
+            if same_entry "$src" "$target"; then
+                continue
+            fi
+
+            backup_user_path "$target"
+            rm -rf "$target"
+        fi
+
+        mkdir -p "$(dirname "$target")"
+        cp -a "$src" "$target"
+
+    done < <(
+        find "$src_root" \
+            -mindepth 1 \
+            -print0
+    )
+}
+
+
+restore_user_config()
+{
+    info "Restoring saved user configuration"
+
+    echo "Existing conflicting files will be backed up under:"
+    echo
+    echo "  $BACKUP_ROOT"
+    echo
+
+    confirm "Restore user configuration?" || return
+
+    restore_user_tree "$USER_CONFIG"
+
+    # SSH config should not be broadly readable.
+    if [[ -f "$HOME/.ssh/config" ]]; then
+        chmod 600 "$HOME/.ssh/config"
+    fi
+}
+
+
+# ---------------------------------------------------------------------------
+# System configuration review
+# ---------------------------------------------------------------------------
+
+review_system_config()
+{
+    local src
+    local rel
+    local target
+    local differences=0
+    local efi_available=1
+    
+    if [[ -d "$SYSTEM_CONFIG/efi" ]] && ! mountpoint -q /efi; then
+        warn "/efi is not mounted; EFI configuration comparisons will be skipped."
+        efi_available=0
+    fi
+
+    [[ -d "$SYSTEM_CONFIG" ]] || return
+
+    info "System configuration differences"
+
+    while IFS= read -r -d '' src; do
+
+        rel="${src#$SYSTEM_CONFIG/}"
+        target="/$rel"
+
+        if [[ "$rel" == efi/* ]] && (( ! efi_available )); then
+            continue
+        fi
+
+        if [[ ! -e "$target" && ! -L "$target" ]]; then
+            printf 'MISSING   /%s\n' "$rel"
+            differences=$((differences + 1))
+            continue
+        fi
+
+        if [[ -L "$src" ]]; then
+
+            if [[ ! -L "$target" ]] \
+                || [[ "$(readlink "$src")" != "$(readlink "$target")" ]]
+            then
+                printf 'DIFFER   /%s\n' "$rel"
+                differences=$((differences + 1))
+            fi
+
+        elif [[ -f "$src" ]]; then
+
+            if ! sudo cmp -s "$src" "$target"; then
+                printf 'DIFFER   /%s\n' "$rel"
+                differences=$((differences + 1))
+            fi
+        fi
+
+    done < <(
+        find "$SYSTEM_CONFIG" \
+            \( -type f -o -type l \) \
+            -print0
+    )
+
+    if (( differences == 0 )); then
+        echo "Saved system configuration matches this machine."
+    else
+        echo
+        echo "$differences system configuration entries differ."
+    fi
+}
+
+
+review_services()
+{
+    local tmp_system
+    local tmp_user
+
+    tmp_system="$(mktemp)"
+    tmp_user="$(mktemp)"
+
+    info "Saved systemd enablement differences"
+
+    systemctl list-unit-files \
+        --state=enabled \
+        --no-legend \
+        --no-pager \
+        | awk '{print $1}' \
+        | LC_ALL=C sort \
+        > "$tmp_system"
+
+    echo "Saved system units not currently enabled:"
+    echo
+
+    comm -23 \
+        "$STATE/systemd-system-enabled.txt" \
+        "$tmp_system" \
+        || true
+
+
+    systemctl --user list-unit-files \
+        --state=enabled \
+        --no-legend \
+        --no-pager \
+        | awk '{print $1}' \
+        | LC_ALL=C sort \
+        > "$tmp_user" \
+        2>/dev/null \
+        || true
+
+    echo
+    echo "Saved user units not currently enabled:"
+    echo
+
+    comm -23 \
+        "$STATE/systemd-user-enabled.txt" \
+        "$tmp_user" \
+        || true
+
+    rm -f "$tmp_system" "$tmp_user"
+}
+
+
+review_environment()
+{
+    review_system_config
+    review_services
+
+    echo
+    echo "No system configuration was modified."
+}
+
+
+# ---------------------------------------------------------------------------
+# Usage
+# ---------------------------------------------------------------------------
+
+usage()
+{
+    cat <<EOF
+Usage:
+
+  bootstrap packages
+  bootstrap dotfiles
+  bootstrap vim
+  bootstrap user
+  bootstrap review
+  bootstrap all
+
+Commands:
+
+  packages   Install official/AUR packages and Code extensions
+  dotfiles   Restore GNU Stow-managed dotfiles
+  vim        Restore pinned Vim plugin repositories and patches
+  user       Restore saved user configuration
+  review     Compare saved system/service state without modifying it
+  all        Run packages, dotfiles, vim, user, then review
+
+EOF
+}
+
+
+# ---------------------------------------------------------------------------
+# Main
+# ---------------------------------------------------------------------------
+
+require_arch
+require_not_root
+
+ACTION="${1:-all}"
+
+case "$ACTION" in
+
+    packages)
+        install_packages
+        ;;
+
+    dotfiles)
+        restore_dotfiles
+        ;;
+
+    vim)
+        restore_vim_plugins
+        ;;
+
+    user)
+        restore_user_config
+        ;;
+
+    review)
+        review_environment
+        ;;
+
+    all)
+        install_packages
+        restore_dotfiles
+        restore_vim_plugins
+        restore_user_config
+        review_environment
+        ;;
+
+    help|-h|--help)
+        usage
+        ;;
+
+    *)
+        usage
+        exit 1
+        ;;
+esac
+
+
+echo
+echo "--- Bootstrap complete ---"
+echo
