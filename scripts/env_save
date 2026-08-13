@@ -323,30 +323,10 @@ lsusb \
 
 bootctl status > "$STATE/bootctl.txt" 2>&1 || true
 
-if command -v sbctl >/dev/null 2>&1; then
-
-    # Only preserve the meaningful Secure Boot state.
-    sbctl status 2>/dev/null \
-        | grep -E '^(Installed|Setup Mode|Secure Boot):' \
-        > "$STATE/sbctl-status.txt" \
-        || true
-
-    # sbctl verify may enumerate EFI files in a different order.
-    # Remove the informational heading/blank lines and canonicalize ordering.
-    SBCTL_UNICODE=0 sbctl verify 2>&1 \
-        | sed \
-            -e '/^Verifying file database/d' \
-            -e '/^[[:space:]]*$/d' \
-        | LC_ALL=C sort \
-        > "$STATE/sbctl-verify.txt" \
-        || true
-
-else
-    rm -f \
-        "$STATE/sbctl-status.txt" \
-        "$STATE/sbctl-verify.txt"
-fi
-
+SBCTL_UNICODE=0 sbctl --json verify 2>/dev/null \
+    | jq -S . \
+    > "$STATE/sbctl-verify.json" \
+    || true
 
 # ---------------------------------------------------------------------------
 # Root-access state

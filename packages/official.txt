@@ -16,6 +16,7 @@ gptfdisk
 gvim
 icoutils
 inetutils
+jq
 kitty
 konsole
 lib32-giflib
