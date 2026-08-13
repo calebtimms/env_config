@@ -125,6 +125,254 @@ same_entry()
 }
 
 
+system_safe_entry_differs()
+{
+    local src="$1"
+    local target="$2"
+
+    if [[ -L "$src" ]]; then
+
+        sudo test -L "$target" || return 0
+
+        [[ "$(readlink -- "$src")" != "$(sudo readlink -- "$target")" ]]
+        return
+    fi
+
+    # Saved regular file must correspond to a real regular file,
+    # not merely a symlink resolving to one.
+    if sudo test -L "$target" || ! sudo test -f "$target"; then
+        return 0
+    fi
+
+    ! sudo cmp -s "$src" "$target"
+}
+
+
+backup_system_path()
+{
+    local target="$1"
+    local rel="${target#/}"
+    local backup="$BACKUP_ROOT/system/$rel"
+    local meta="$backup.env-config-meta"
+
+    if ! sudo test -e "$target" && ! sudo test -L "$target"; then
+        return 0
+    fi
+
+    mkdir -p "$(dirname "$backup")"
+
+    # Keep the backup area private.
+    mkdir -p "$BACKUP_ROOT/system"
+    chmod 700 "$BACKUP_ROOT" "$BACKUP_ROOT/system"
+
+    if sudo test -L "$target"; then
+
+        printf 'type=symlink\n' > "$meta"
+
+        printf 'target=%s\n' \
+            "$(sudo readlink -- "$target")" \
+            >> "$meta"
+
+    elif sudo test -f "$target"; then
+
+        # User-owned backup copy of the file contents.
+        sudo cat "$target" > "$backup"
+
+        chmod 600 "$backup"
+
+        {
+            printf 'type=file\n'
+
+            sudo stat \
+                --format='mode=%a
+uid=%u
+gid=%g' \
+                "$target"
+
+        } > "$meta"
+
+    else
+        warn "Refusing to back up unsupported system path type: $target"
+        return 1
+    fi
+
+    chmod 600 "$meta"
+}
+
+
+restore_system_safe_entry()
+{
+    local src="$1"
+    local rel="${src#$SYSTEM_CONFIG/}"
+    local target="/$rel"
+
+    local mode
+    local link_target
+
+    # Nothing to do.
+    if ! system_safe_entry_differs "$src" "$target"; then
+        return
+    fi
+
+    # Never replace directories with files/symlinks.
+    if sudo test -d "$target" && ! sudo test -L "$target"; then
+        die "Refusing to replace directory with file: $target"
+    fi
+
+    backup_system_path "$target" \
+        || die "Could not back up $target"
+
+    sudo install \
+        -d \
+        -o root \
+        -g root \
+        -m 755 \
+        "$(dirname "$target")"
+
+    # Remove an existing file/symlink only after backup succeeded.
+    if sudo test -e "$target" || sudo test -L "$target"; then
+        sudo rm -f -- "$target"
+    fi
+
+
+    if [[ -L "$src" ]]; then
+
+        link_target="$(readlink -- "$src")"
+
+        sudo ln \
+            -s \
+            -- "$link_target" "$target"
+
+        return
+    fi
+
+
+    # Git reliably preserves the executable bit, but not arbitrary Unix
+    # permission modes. Use sane defaults based on executable status.
+    if [[ -x "$src" ]]; then
+        mode=755
+    else
+        mode=644
+    fi
+
+    sudo install \
+        -o root \
+        -g root \
+        -m "$mode" \
+        -- "$src" "$target"
+}
+
+
+preview_system_safe_changes()
+{
+    local src
+    local rel
+    local target
+
+    local -a candidates=()
+
+    SYSTEM_SAFE_CHANGES=0
+
+    mapfile -d '' -t candidates < <(
+        system_safe_candidates
+    )
+
+    for src in "${candidates[@]}"; do
+
+        rel="${src#$SYSTEM_CONFIG/}"
+        target="/$rel"
+
+        if ! sudo test -e "$target" \
+            && ! sudo test -L "$target"
+        then
+            printf 'ADD       /%s\n' "$rel"
+            SYSTEM_SAFE_CHANGES=$((SYSTEM_SAFE_CHANGES + 1))
+            continue
+        fi
+
+        if system_safe_entry_differs "$src" "$target"; then
+            printf 'DIFFER    /%s\n' "$rel"
+            SYSTEM_SAFE_CHANGES=$((SYSTEM_SAFE_CHANGES + 1))
+        fi
+    done
+}
+
+
+restore_system_safe()
+{
+    local src
+    local -a candidates=()
+
+    info "Safe system configuration restore"
+
+    sudo -v \
+        || die "sudo access is required to restore system configuration."
+
+    echo "The following saved system configuration differs:"
+    echo
+
+    preview_system_safe_changes
+
+    if (( SYSTEM_SAFE_CHANGES == 0 )); then
+        echo "No system-safe configuration changes are required."
+        return
+    fi
+
+    echo
+    echo "$SYSTEM_SAFE_CHANGES system-safe entries would be restored."
+    echo
+    echo "Existing files will first be backed up under:"
+    echo
+    echo "  $BACKUP_ROOT/system"
+    echo
+
+    confirm "Restore these system configuration files?" \
+        || return
+
+    mapfile -d '' -t candidates < <(
+        system_safe_candidates
+    )
+
+    echo
+
+    for src in "${candidates[@]}"; do
+
+        if system_safe_entry_differs \
+            "$src" \
+            "/${src#$SYSTEM_CONFIG/}"
+        then
+            printf 'Restoring /%s\n' \
+                "${src#$SYSTEM_CONFIG/}"
+
+            restore_system_safe_entry "$src"
+        fi
+
+    done
+
+
+    # Custom systemd unit/drop-in files may have changed.
+    sudo systemctl daemon-reload
+
+
+    echo
+    echo "Verifying restored system-safe configuration:"
+    echo
+
+    preview_system_safe_changes
+
+    if (( SYSTEM_SAFE_CHANGES == 0 )); then
+        echo
+        echo "All system-safe entries now match the saved environment."
+    else
+        echo
+        warn "$SYSTEM_SAFE_CHANGES entries still differ after restoration."
+    fi
+
+    echo
+    echo "Some restored settings may require a service restart or reboot."
+}
+
+
 # ---------------------------------------------------------------------------
 # Packages
 # ---------------------------------------------------------------------------
@@ -520,6 +768,81 @@ restore_user_config()
 
 
 # ---------------------------------------------------------------------------
+# Safe system configuration restore
+# ---------------------------------------------------------------------------
+
+system_safe_candidates()
+{
+    local rel
+    local src
+
+    local -a safe_trees=(
+        "etc/pacman.d/hooks"
+
+        "etc/modprobe.d"
+        "etc/modules-load.d"
+
+        "etc/udev/rules.d"
+
+        "etc/sysctl.d"
+        "etc/tmpfiles.d"
+
+        "etc/sddm.conf.d"
+        "etc/X11/xorg.conf.d"
+        "etc/environment.d"
+
+        "etc/NetworkManager/conf.d"
+        "etc/NetworkManager/dispatcher.d"
+
+        "etc/systemd/logind.conf.d"
+        "etc/systemd/sleep.conf.d"
+        "etc/systemd/resolved.conf.d"
+        "etc/systemd/timesyncd.conf.d"
+        "etc/systemd/journald.conf.d"
+
+        "etc/security/limits.d"
+        "etc/ssh/sshd_config.d"
+
+        "usr/local/bin"
+    )
+
+    # Ordinary configuration trees: regular files and deliberate symlinks.
+    for rel in "${safe_trees[@]}"; do
+
+        src="$SYSTEM_CONFIG/$rel"
+
+        [[ -d "$src" ]] || continue
+
+        find "$src" \
+            \( -type f -o -type l \) \
+            -print0
+
+    done
+
+
+    # systemd's /etc/systemd/system and /etc/systemd/user trees need
+    # special handling. env_save also captures enablement/alias symlinks
+    # here, and those should NOT be blindly transplanted.
+    for rel in \
+        "etc/systemd/system" \
+        "etc/systemd/user"
+    do
+
+        src="$SYSTEM_CONFIG/$rel"
+
+        [[ -d "$src" ]] || continue
+
+        # Restore actual custom unit files and drop-ins only.
+        # Service enablement is reconstructed separately from state/.
+        find "$src" \
+            -type f \
+            -print0
+
+    done
+}
+
+
+# ---------------------------------------------------------------------------
 # System configuration review
 # ---------------------------------------------------------------------------
 
@@ -714,17 +1037,20 @@ Usage:
   bootstrap dotfiles
   bootstrap vim
   bootstrap user
+  bootstrap system-safe
   bootstrap review
   bootstrap all
 
 Commands:
 
-  packages   Install official/AUR packages and Code extensions
-  dotfiles   Restore GNU Stow-managed dotfiles
-  vim        Restore pinned Vim plugin repositories and patches
-  user       Restore saved user configuration
-  review     Compare saved system/service state without modifying it
-  all        Run packages, dotfiles, vim, user, then review
+  packages      Install official/AUR packages and Code extensions
+  dotfiles      Restore GNU Stow-managed dotfiles
+  vim           Restore pinned Vim plugin repositories and patches
+  user          Restore saved user configuration
+  system-safe   Restore curated portable system configuration
+  review        Compare saved system/service state without modifying it
+  all           Run packages, dotfiles, vim, user, then review
+                (does NOT restore system configuration)
 
 EOF
 }
@@ -761,6 +1087,11 @@ case "$ACTION" in
 
     user)
         restore_user_config
+        ;;
+
+
+    system-safe)
+        restore_system_safe
         ;;
 
     review)
