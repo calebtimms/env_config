@@ -70,6 +70,22 @@ require_not_root()
 }
 
 
+require_repo()
+{
+    [[ -d "$REPO" ]] \
+        || die "Environment repository not found: $REPO"
+
+    [[ -d "$DOTFILES" ]] \
+        || die "Missing dotfiles directory: $DOTFILES"
+
+    [[ -d "$PACKAGES" ]] \
+        || die "Missing packages directory: $PACKAGES"
+
+    [[ -d "$STATE" ]] \
+        || die "Missing state directory: $STATE"
+}
+
+
 backup_user_path()
 {
     local target="$1"
@@ -92,8 +108,11 @@ same_entry()
     local src="$1"
     local dest="$2"
 
-    if [[ -L "$src" && -L "$dest" ]]; then
-        [[ "$(readlink "$src")" == "$(readlink "$dest")" ]]
+    # If either side is a symlink, both must be symlinks.
+    if [[ -L "$src" || -L "$dest" ]]; then
+        [[ -L "$src" && -L "$dest" ]] || return 1
+
+        [[ "$(readlink -- "$src")" == "$(readlink -- "$dest")" ]]
         return
     fi
 
@@ -245,33 +264,41 @@ install_packages()
 backup_stow_conflicts()
 {
     local package="$1"
+    local package_root="$DOTFILES/$package"
+
     local item
     local rel
     local target
+    local resolved
 
     while IFS= read -r -d '' item; do
-        rel="${item#$DOTFILES/$package/}"
+
+        rel="${item#$package_root/}"
         target="$HOME/$rel"
 
         if [[ -e "$target" || -L "$target" ]]; then
 
-            # Already points into our repository.
-            if [[ -L "$target" ]]; then
-                case "$(readlink -f "$target" 2>/dev/null || true)" in
-                    "$DOTFILES/$package/"*)
-                        continue
-                        ;;
-                esac
-            fi
+            resolved="$(
+                readlink -f -- "$target" 2>/dev/null \
+                    || true
+            )"
+
+            # Whether the final component or one of its parents is symlinked,
+            # don't touch it if it resolves back into this Stow package.
+            case "$resolved" in
+                "$package_root"|"$package_root"/*)
+                    continue
+                    ;;
+            esac
 
             warn "Backing up conflicting file: $target"
 
             backup_user_path "$target"
-            rm -rf "$target"
+            rm -rf -- "$target"
         fi
 
     done < <(
-        find "$DOTFILES/$package" \
+        find "$package_root" \
             \( -type f -o -type l \) \
             -print0
     )
@@ -362,6 +389,12 @@ restore_vim_plugins()
         else
             mkdir -p "$(dirname "$target")"
 
+            [[ "$remote" != "-" ]] \
+                || die "No remote recorded for Vim plugin: $name"
+            
+            [[ "$commit" != "-" ]] \
+                || die "No commit recorded for Vim plugin: $name"
+
             git clone "$remote" "$target"
         fi
 
@@ -386,14 +419,16 @@ restore_vim_plugins()
         fi
 
         if [[ "$saved_dirty" == "DIRTY" ]]; then
-
-            if [[ -f "$patch" ]]; then
-                echo "  applying $(basename "$patch")"
-
-                git -C "$target" apply "$patch"
-            else
-                warn "$name was DIRTY in the saved environment but no patch exists."
-            fi
+        
+            [[ -f "$patch" ]] \
+                || die "$name was DIRTY in the saved environment but no patch exists."
+        
+            echo "  applying $(basename "$patch")"
+        
+            git -C "$target" apply --check "$patch" \
+                || die "Saved patch does not apply cleanly to $name."
+        
+            git -C "$target" apply "$patch"
         fi
 
     done < "$inventory"
@@ -419,8 +454,20 @@ restore_user_tree()
         rel="${src#$src_root/}"
         target="$HOME/$rel"
 
-        if [[ -d "$src" ]]; then
-            mkdir -p "$target"
+        # Real directory, but NOT a symlink to a directory.
+        if [[ -d "$src" && ! -L "$src" ]]; then
+
+            # Don't follow an existing destination symlink.
+            if [[ -L "$target" ]] \
+                || [[ -e "$target" && ! -d "$target" ]]
+            then
+                warn "Backing up conflicting path: $target"
+
+                backup_user_path "$target"
+                rm -rf -- "$target"
+            fi
+
+            mkdir -p -- "$target"
             continue
         fi
 
@@ -430,17 +477,21 @@ restore_user_tree()
                 continue
             fi
 
+            warn "Backing up conflicting file: $target"
+
             backup_user_path "$target"
-            rm -rf "$target"
+            rm -rf -- "$target"
         fi
 
-        mkdir -p "$(dirname "$target")"
-        cp -a "$src" "$target"
+        mkdir -p -- "$(dirname "$target")"
+
+        cp -a -- "$src" "$target"
 
     done < <(
         find "$src_root" \
             -mindepth 1 \
-            -print0
+            -print0 \
+            | LC_ALL=C sort -z
     )
 }
 
@@ -457,8 +508,11 @@ restore_user_config()
     confirm "Restore user configuration?" || return
 
     restore_user_tree "$USER_CONFIG"
-
-    # SSH config should not be broadly readable.
+    
+    if [[ -d "$HOME/.ssh" ]]; then
+        chmod 700 "$HOME/.ssh"
+    fi
+    
     if [[ -f "$HOME/.ssh/config" ]]; then
         chmod 600 "$HOME/.ssh/config"
     fi
@@ -474,17 +528,25 @@ review_system_config()
     local src
     local rel
     local target
+    local src_link
+    local target_link
     local differences=0
     local efi_available=1
-    
+
+    [[ -d "$SYSTEM_CONFIG" ]] || {
+        warn "No saved system configuration found."
+        return
+    }
+
+    info "System configuration differences"
+
+    sudo -v \
+        || die "sudo access is required to review system configuration."
+
     if [[ -d "$SYSTEM_CONFIG/efi" ]] && ! mountpoint -q /efi; then
         warn "/efi is not mounted; EFI configuration comparisons will be skipped."
         efi_available=0
     fi
-
-    [[ -d "$SYSTEM_CONFIG" ]] || return
-
-    info "System configuration differences"
 
     while IFS= read -r -d '' src; do
 
@@ -495,7 +557,8 @@ review_system_config()
             continue
         fi
 
-        if [[ ! -e "$target" && ! -L "$target" ]]; then
+        # Target paths may not be traversable by the normal user.
+        if ! sudo test -e "$target" && ! sudo test -L "$target"; then
             printf 'MISSING   /%s\n' "$rel"
             differences=$((differences + 1))
             continue
@@ -503,16 +566,28 @@ review_system_config()
 
         if [[ -L "$src" ]]; then
 
-            if [[ ! -L "$target" ]] \
-                || [[ "$(readlink "$src")" != "$(readlink "$target")" ]]
-            then
+            if ! sudo test -L "$target"; then
+                printf 'DIFFER   /%s\n' "$rel"
+                differences=$((differences + 1))
+                continue
+            fi
+
+            src_link="$(readlink -- "$src")"
+            target_link="$(sudo readlink -- "$target")"
+
+            if [[ "$src_link" != "$target_link" ]]; then
                 printf 'DIFFER   /%s\n' "$rel"
                 differences=$((differences + 1))
             fi
 
         elif [[ -f "$src" ]]; then
 
-            if ! sudo cmp -s "$src" "$target"; then
+            # A saved regular file should remain a regular file, not a symlink
+            # that merely happens to resolve to identical contents.
+            if sudo test -L "$target" \
+                || ! sudo test -f "$target" \
+                || ! sudo cmp -s "$src" "$target"
+            then
                 printf 'DIFFER   /%s\n' "$rel"
                 differences=$((differences + 1))
             fi
@@ -521,11 +596,12 @@ review_system_config()
     done < <(
         find "$SYSTEM_CONFIG" \
             \( -type f -o -type l \) \
-            -print0
+            -print0 \
+            | LC_ALL=C sort -z
     )
 
     if (( differences == 0 )); then
-        echo "Saved system configuration matches this machine."
+        echo "All saved system configuration entries match this machine."
     else
         echo
         echo "$differences system configuration entries differ."
@@ -541,43 +617,75 @@ review_services()
     tmp_system="$(mktemp)"
     tmp_user="$(mktemp)"
 
-    info "Saved systemd enablement differences"
+    info "Systemd enablement differences"
 
-    systemctl list-unit-files \
-        --state=enabled \
-        --no-legend \
-        --no-pager \
-        | awk '{print $1}' \
-        | LC_ALL=C sort \
-        > "$tmp_system"
+    if [[ -f "$STATE/systemd-system-enabled.txt" ]]; then
 
-    echo "Saved system units not currently enabled:"
+        if systemctl list-unit-files \
+            --state=enabled \
+            --no-legend \
+            --no-pager \
+            | awk '{print $1}' \
+            | LC_ALL=C sort \
+            > "$tmp_system"
+        then
+            echo "Saved system units not currently enabled:"
+            echo
+
+            comm -23 \
+                "$STATE/systemd-system-enabled.txt" \
+                "$tmp_system"
+
+            echo
+            echo "Currently enabled system units not in saved state:"
+            echo
+
+            comm -13 \
+                "$STATE/systemd-system-enabled.txt" \
+                "$tmp_system"
+        else
+            warn "Could not query system systemd units."
+        fi
+
+    else
+        warn "Saved systemd system-unit state is missing."
+    fi
+
+
     echo
 
-    comm -23 \
-        "$STATE/systemd-system-enabled.txt" \
-        "$tmp_system" \
-        || true
+    if [[ -f "$STATE/systemd-user-enabled.txt" ]]; then
 
+        if systemctl --user list-unit-files \
+            --state=enabled \
+            --no-legend \
+            --no-pager \
+            2>/dev/null \
+            | awk '{print $1}' \
+            | LC_ALL=C sort \
+            > "$tmp_user"
+        then
+            echo "Saved user units not currently enabled:"
+            echo
 
-    systemctl --user list-unit-files \
-        --state=enabled \
-        --no-legend \
-        --no-pager \
-        | awk '{print $1}' \
-        | LC_ALL=C sort \
-        > "$tmp_user" \
-        2>/dev/null \
-        || true
+            comm -23 \
+                "$STATE/systemd-user-enabled.txt" \
+                "$tmp_user"
 
-    echo
-    echo "Saved user units not currently enabled:"
-    echo
+            echo
+            echo "Currently enabled user units not in saved state:"
+            echo
 
-    comm -23 \
-        "$STATE/systemd-user-enabled.txt" \
-        "$tmp_user" \
-        || true
+            comm -13 \
+                "$STATE/systemd-user-enabled.txt" \
+                "$tmp_user"
+        else
+            warn "Could not query the user systemd manager."
+        fi
+
+    else
+        warn "Saved systemd user-unit state is missing."
+    fi
 
     rm -f "$tmp_system" "$tmp_user"
 }
@@ -628,8 +736,14 @@ EOF
 
 require_arch
 require_not_root
+require_repo
 
-ACTION="${1:-all}"
+(( $# <= 1 )) || {
+    usage
+    exit 2
+}
+
+ACTION="${1:-help}"
 
 case "$ACTION" in
 
