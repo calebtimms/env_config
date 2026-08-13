@@ -1,1 +1,0 @@
-sbctl requires root to run: populating ruleset for "/efi/EFI/BOOT/BOOTX64.EFI" with access {execute,write_file,read_file,truncate}: open: permission denied
