@@ -1,21 +1,19 @@
-NAME             FSTYPE      FSVER    LABEL       UUID                                   FSAVAIL FSUSE% MOUNTPOINTS
-sda                                                                                                     
-├─sda1           vfat        FAT32                C9A9-F260                                             
-├─sda2           ext4        1.0                  eeabaa72-7205-4f97-a46a-5c3d7d2458b5                  
-└─sda3           crypto_LUKS 2                    48d0ab18-b3b8-4e25-9dd6-70c64e791cee                  
-sdb                                                                                                     
-└─sdb1           ntfs                 Expansion 2 1CE80571E8054B0A                                      
-sdc                                                                                                     
-sdd                                                                                                     
-sde                                                                                                     
-└─sde1           ntfs                 My Passport F6E0C1E8E0C1AEE5                                      
-nvme1n1                                                                                                 
-├─nvme1n1p1      vfat        FAT32    ARCH_EFI    915D-8BC2                                 1.4G    28% /efi
-└─nvme1n1p2      LVM2_member LVM2 001             n1PcK8-iPBc-OGmt-q8SK-hgW6-JR8t-07kQzt                
-  └─arch_vg-root btrfs                archroot    22f7ed40-17cc-405d-8548-6030021d28c3        3T    16% /home
-                                                                                                        /
-nvme0n1                                                                                                 
-├─nvme0n1p1      vfat        FAT32                DCE3-60C6                                             
-├─nvme0n1p2                                                                                             
-├─nvme0n1p3      ntfs                             369CE5FA9CE5B491                                      
-└─nvme0n1p4      ntfs                             62663CE9663CC019                                      
+arch_vg-root 3.6T lvm btrfs  archroot 22f7ed40-17cc-405d-8548-6030021d28c3 
+nvme0n1 1.9T disk     
+nvme0n1p1 100M part vfat FAT32  DCE3-60C6 2498983e-6908-43af-a94a-de17a29e6f55
+nvme0n1p2 16M part     8e981cdf-0cb4-4297-ab50-8647bf7e4bdd
+nvme0n1p3 1.9T part ntfs   369CE5FA9CE5B491 f1122752-2dba-4460-a8fd-d635a106eed1
+nvme0n1p4 797M part ntfs   62663CE9663CC019 fe58c2ec-0576-44f8-9223-90b9fadcae38
+nvme1n1 3.6T disk     
+nvme1n1p1 2G part vfat FAT32 ARCH_EFI 915D-8BC2 20378438-0451-43d2-9ce1-6cf8ce85a3a2
+nvme1n1p2 3.6T part LVM2_member LVM2\x20001  n1PcK8-iPBc-OGmt-q8SK-hgW6-JR8t-07kQzt ee38a4b7-9cb4-4b0a-ba9d-de2d833db45b
+sda 476.9G disk     
+sda1 2G part vfat FAT32  C9A9-F260 2c4c4478-3836-431a-9e7d-c67adaa62967
+sda2 8G part ext4 1.0  eeabaa72-7205-4f97-a46a-5c3d7d2458b5 f056be3f-31fd-4528-8a71-6cc0e2944153
+sda3 466.9G part crypto_LUKS 2  48d0ab18-b3b8-4e25-9dd6-70c64e791cee d7c9acd7-b905-483c-885b-41805efb7aec
+sdb 465.8G disk     
+sdb1 465.8G part ntfs  Expansion\x202 1CE80571E8054B0A ccbb4b6c-01
+sdc 0B disk     
+sdd 0B disk     
+sde 5.5T disk     
+sde1 5.5T part ntfs  My\x20Passport F6E0C1E8E0C1AEE5 a7291531-d349-40bd-a918-c1d3477bdd66

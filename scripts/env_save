@@ -235,8 +235,6 @@ capture_git_repo_inventory()
 
 pacman -Qqen | LC_ALL=C sort > "$PACKAGES/official.txt"
 pacman -Qqem | LC_ALL=C sort > "$PACKAGES/foreign.txt"
-pacman -Q    | LC_ALL=C sort > "$PACKAGES/all-versioned.txt"
-
 
 # Flatpak
 if command -v flatpak >/dev/null 2>&1; then
@@ -299,9 +297,12 @@ timedatectl show \
 # Hardware / filesystem layout
 # ---------------------------------------------------------------------------
 
-lsblk -f > "$STATE/lsblk.txt"
-
-findmnt > "$STATE/findmnt.txt"
+lsblk \
+    --raw \
+    --noheadings \
+    --output NAME,SIZE,TYPE,FSTYPE,FSVER,LABEL,UUID,PARTUUID \
+    | LC_ALL=C sort \
+    > "$STATE/lsblk.txt"
 
 # Basic PCI hardware inventory; does not require kernel module metadata.
 lspci -nn > "$STATE/lspci.txt" 2>&1 || true
@@ -310,7 +311,10 @@ lspci -nn > "$STATE/lspci.txt" 2>&1 || true
 # immediately after a kernel package upgrade but before reboot.
 lspci -nnk > "$STATE/lspci-kernel-drivers.txt" 2>&1 || true
 
-lsusb > "$STATE/lsusb.txt"
+lsusb \
+    | sed -E 's/^Bus [0-9]+ Device [0-9]+: //' \
+    | LC_ALL=C sort \
+    > "$STATE/lsusb.txt"
 
 
 # ---------------------------------------------------------------------------
@@ -320,9 +324,27 @@ lsusb > "$STATE/lsusb.txt"
 bootctl status > "$STATE/bootctl.txt" 2>&1 || true
 
 if command -v sbctl >/dev/null 2>&1; then
-    sbctl status > "$STATE/sbctl-status.txt" 2>&1 || true
 
-    sbctl verify > "$STATE/sbctl-verify.txt" 2>&1 || true
+    # Only preserve the meaningful Secure Boot state.
+    sbctl status 2>/dev/null \
+        | grep -E '^(Installed|Setup Mode|Secure Boot):' \
+        > "$STATE/sbctl-status.txt" \
+        || true
+
+    # sbctl verify may enumerate EFI files in a different order.
+    # Remove the informational heading/blank lines and canonicalize ordering.
+    SBCTL_UNICODE=0 sbctl verify 2>&1 \
+        | sed \
+            -e '/^Verifying file database/d' \
+            -e '/^[[:space:]]*$/d' \
+        | LC_ALL=C sort \
+        > "$STATE/sbctl-verify.txt" \
+        || true
+
+else
+    rm -f \
+        "$STATE/sbctl-status.txt" \
+        "$STATE/sbctl-verify.txt"
 fi
 
 
@@ -341,9 +363,15 @@ fi
 
 if (( HAVE_SUDO )); then
 
-    sudo blkid > "$STATE/blkid.txt" 2>&1 || true
+    sudo blkid 2>/dev/null \
+        | LC_ALL=C sort \
+        > "$STATE/blkid.txt" \
+        || true
 
-    sudo efibootmgr -v > "$STATE/efibootmgr.txt" 2>&1 || true
+    sudo efibootmgr -v 2>/dev/null \
+        | grep -vE '^(BootCurrent|BootNext):' \
+        > "$STATE/efibootmgr.txt" \
+        || true
 
     sudo btrfs subvolume list / \
         | sed -n 's/.* path //p' \
@@ -433,101 +461,13 @@ if (( HAVE_SUDO )); then
 
     capture_root_tree /usr/local/bin
 
-    # -----------------------------------------------------------------------
-    # User configuration trees/files
-    # -----------------------------------------------------------------------
-    capture_user_tree "$HOME/.config/systemd/user"
-    capture_user_tree "$HOME/.config/environment.d"
-    capture_user_tree "$HOME/.config/autostart"
-
-    capture_user_file "$HOME/.local/share/applications/sierra.desktop"
-    capture_user_file "$HOME/.local/share/icons/sierra.png"
-    capture_user_file "$HOME/.local/share/applications/trading-dashboard.desktop"
-
-    capture_user_file "$HOME/.ssh/config"
-
-    capture_user_file "$HOME/.config/mimeapps.list"
-
-    capture_user_file "$HOME/.config/user-dirs.dirs"
-    capture_user_file "$HOME/.config/user-dirs.locale"
-
-    # ---------------------------------------------------------------------------
-    # KDE / Plasma user configuration
-    # ---------------------------------------------------------------------------
+    LOADER_ENTRIES_DEST="$SYSTEM/efi/loader/entries"
     
-    capture_user_file "$HOME/.config/kdeglobals"
+    rm -rf "$LOADER_ENTRIES_DEST"
     
-    capture_user_file "$HOME/.config/kglobalshortcutsrc"
-    
-    capture_user_file "$HOME/.config/kcminputrc"
-    capture_user_file "$HOME/.config/kscreenlockerrc"
-    
-    capture_user_file "$HOME/.config/kwinrc"
-    capture_user_file "$HOME/.config/kwinrulesrc"
-    
-    capture_user_file "$HOME/.config/plasma-localerc"
-    
-    capture_user_file "$HOME/.config/plasma-org.kde.plasma.desktop-appletsrc"
-    
-    capture_user_file "$HOME/.config/plasmanotifyrc"
-    capture_user_file "$HOME/.config/plasmarc"
-    capture_user_file "$HOME/.config/plasmashellrc"
-    
-    capture_user_file "$HOME/.config/powerdevilrc"
-    capture_user_file "$HOME/.config/powermanagementprofilesrc"
-
-    capture_user_file "$HOME/.config/plasmaparc"
-    capture_user_file "$HOME/.config/kded5rc" 
-
-    capture_user_state_file "$HOME/.config/kwinoutputconfig.json"
-    capture_user_state_file "$HOME/.config/kde.org/kwin.conf"
-
-    capture_user_state_tree "$HOME/.config/kdedefaults"
-
-    capture_user_file "$HOME/.config/spectaclerc"
-
-    # ---------------------------------------------------------------------------
-    # Locally installed KDE / KWin extensions
-    # ---------------------------------------------------------------------------
-    
-    capture_user_tree "$HOME/.local/share/kwin/scripts"
-    capture_user_tree "$HOME/.local/share/kwin/effects"
-    capture_user_tree "$HOME/.local/share/plasma/plasmoids"
-
-    # ---------------------------------------------------------------------------
-    # Code OSS
-    # ---------------------------------------------------------------------------
-    
-    capture_user_file "$HOME/.config/Code - OSS/User/settings.json"
-    capture_user_file "$HOME/.config/Code - OSS/User/keybindings.json"
-    
-    capture_user_tree "$HOME/.config/Code - OSS/User/snippets"
-
-    # ---------------------------------------------------------------------------
-    # VIM Plugins
-    # ---------------------------------------------------------------------------
-
-    capture_git_repo_inventory \
-        "$STATE/vim-plugin-git.txt" \
-        "$HOME/.vim/pack"
-
-    # ---------------------------------------------------------------------------
-    # GTK Config
-    # ---------------------------------------------------------------------------
-
-    capture_user_file "$HOME/.config/gtk-3.0/settings.ini"
-    capture_user_file "$HOME/.config/gtk-3.0/gtk.css"
-    
-    capture_user_file "$HOME/.config/gtk-4.0/settings.ini"
-    capture_user_file "$HOME/.config/gtk-4.0/gtk.css"
-
-    # GTK/XSettings integration
-    capture_user_tree "$HOME/.config/xsettingsd"
-
-    # Copy loader entry .conf files, but NOT random-seed or EFI binaries.
     if sudo test -d /efi/loader/entries; then
-        mkdir -p "$SYSTEM/efi/loader/entries"
-
+        mkdir -p "$LOADER_ENTRIES_DEST"
+    
         while IFS= read -r entry; do
             dest="$SYSTEM/${entry#/}"
             sudo cat "$entry" > "$dest"
@@ -536,22 +476,153 @@ if (( HAVE_SUDO )); then
                 -maxdepth 1 \
                 -type f \
                 -name '*.conf' \
-                -print
+                -print \
+                | LC_ALL=C sort
         )
     fi
 fi
 
+
+# -----------------------------------------------------------------------
+# User configuration trees/files
+# -----------------------------------------------------------------------
+capture_user_tree "$HOME/.config/systemd/user"
+capture_user_tree "$HOME/.config/environment.d"
+capture_user_tree "$HOME/.config/autostart"
+
+capture_user_file "$HOME/.local/share/applications/sierra.desktop"
+capture_user_file "$HOME/.local/share/icons/sierra.png"
+capture_user_file "$HOME/.local/share/applications/trading-dashboard.desktop"
+
+capture_user_file "$HOME/.ssh/config"
+
+capture_user_file "$HOME/.config/mimeapps.list"
+
+capture_user_file "$HOME/.config/user-dirs.dirs"
+capture_user_file "$HOME/.config/user-dirs.locale"
+
+# ---------------------------------------------------------------------------
+# KDE / Plasma user configuration
+# ---------------------------------------------------------------------------
+
+capture_user_file "$HOME/.config/kdeglobals"
+
+capture_user_file "$HOME/.config/kglobalshortcutsrc"
+
+capture_user_file "$HOME/.config/kcminputrc"
+capture_user_file "$HOME/.config/kscreenlockerrc"
+
+capture_user_file "$HOME/.config/kwinrc"
+capture_user_file "$HOME/.config/kwinrulesrc"
+
+capture_user_file "$HOME/.config/plasma-localerc"
+
+capture_user_file "$HOME/.config/plasma-org.kde.plasma.desktop-appletsrc"
+
+capture_user_file "$HOME/.config/plasmanotifyrc"
+capture_user_file "$HOME/.config/plasmarc"
+capture_user_file "$HOME/.config/plasmashellrc"
+
+capture_user_file "$HOME/.config/powerdevilrc"
+capture_user_file "$HOME/.config/powermanagementprofilesrc"
+
+capture_user_file "$HOME/.config/plasmaparc"
+capture_user_file "$HOME/.config/kded5rc" 
+
+KWIN_OUTPUT_SRC="$HOME/.config/kwinoutputconfig.json"
+KWIN_OUTPUT_DEST="$STATE/user/.config/kwinoutputconfig.json"
+
+if [[ -f "$KWIN_OUTPUT_SRC" ]]; then
+    mkdir -p "$(dirname "$KWIN_OUTPUT_DEST")"
+
+    if command -v jq >/dev/null 2>&1; then
+        jq --sort-keys . \
+            "$KWIN_OUTPUT_SRC" \
+            > "$KWIN_OUTPUT_DEST"
+    else
+        cp "$KWIN_OUTPUT_SRC" "$KWIN_OUTPUT_DEST"
+    fi
+else
+    rm -f "$KWIN_OUTPUT_DEST"
+fi
+
+KWIN_POS_SRC="$HOME/.config/kde.org/kwin.conf"
+KWIN_POS_DEST="$STATE/user/.config/kde.org/kwin-overrides.conf"
+
+if [[ -f "$KWIN_POS_SRC" ]]; then
+    mkdir -p "$(dirname "$KWIN_POS_DEST")"
+
+    grep -E \
+        '^(rememberwindowpositions_configOverrides|rememberwindowpositions_currentDefaultOverrideCount)=' \
+        "$KWIN_POS_SRC" \
+        > "$KWIN_POS_DEST" \
+        || true
+else
+    rm -f "$KWIN_POS_DEST"
+fi
+
+rm -f "$STATE/user/.config/kde.org/kwin.conf"
+
+capture_user_state_tree "$HOME/.config/kdedefaults"
+
+capture_user_file "$HOME/.config/spectaclerc"
+
+# ---------------------------------------------------------------------------
+# Locally installed KDE / KWin extensions
+# ---------------------------------------------------------------------------
+
+capture_user_tree "$HOME/.local/share/kwin/scripts"
+capture_user_tree "$HOME/.local/share/kwin/effects"
+capture_user_tree "$HOME/.local/share/plasma/plasmoids"
+
+# ---------------------------------------------------------------------------
+# Code OSS
+# ---------------------------------------------------------------------------
+
+capture_user_file "$HOME/.config/Code - OSS/User/settings.json"
+capture_user_file "$HOME/.config/Code - OSS/User/keybindings.json"
+
+capture_user_tree "$HOME/.config/Code - OSS/User/snippets"
+
+# ---------------------------------------------------------------------------
+# VIM Plugins
+# ---------------------------------------------------------------------------
+
+capture_git_repo_inventory \
+    "$STATE/vim-plugin-git.txt" \
+    "$HOME/.vim/pack"
+
+# ---------------------------------------------------------------------------
+# GTK Config
+# ---------------------------------------------------------------------------
+
+capture_user_file "$HOME/.config/gtk-3.0/settings.ini"
+capture_user_file "$HOME/.config/gtk-3.0/gtk.css"
+
+capture_user_file "$HOME/.config/gtk-4.0/settings.ini"
+capture_user_file "$HOME/.config/gtk-4.0/gtk.css"
+
+# GTK/XSettings integration
+capture_user_tree "$HOME/.config/xsettingsd"
 
 # ---------------------------------------------------------------------------
 # Optional user-space development tools
 # ---------------------------------------------------------------------------
 
 if command -v cargo >/dev/null 2>&1; then
-    cargo install --list > "$STATE/cargo-installed.txt" 2>&1 || true
+    cargo install --list \
+        > "$STATE/cargo-installed.txt" 2>&1 || true
+else
+    rm -f "$STATE/cargo-installed.txt"
 fi
 
 if command -v rustup >/dev/null 2>&1; then
-    rustup toolchain list > "$STATE/rust-toolchains.txt" 2>&1 || true
+    rustup toolchain list \
+        | sed -E 's/[[:space:]]+\([^)]*\)$//' \
+        | LC_ALL=C sort \
+        > "$STATE/rust-toolchains.txt"
+else
+    rm -f "$STATE/rust-toolchains.txt"
 fi
 
 if command -v uv >/dev/null 2>&1; then
