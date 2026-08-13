@@ -1,0 +1,1 @@
+rd.luks.name=48d0ab18-b3b8-4e25-9dd6-70c64e791cee=lvm root=/dev/mapper/volgroup0-lv_root rw loglevel=3 quiet

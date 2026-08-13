@@ -50,6 +50,185 @@ capture_root_file()
 }
 
 
+capture_root_tree()
+{
+    local src="$1"
+    local dest="$SYSTEM/${src#/}"
+    local parent
+    local base
+    local tmp
+
+    if ! sudo test -d "$src"; then
+        rm -rf "$dest"
+        return
+    fi
+
+    parent="$(dirname "$src")"
+    base="$(basename "$src")"
+
+    tmp="$(mktemp -d)" || {
+        echo "WARNING: Failed to create temporary directory for $src" >&2
+        return 1
+    }
+
+    # Use explicit GNU tar paths/options and ignore any inherited TAR_OPTIONS.
+    # Extract as the current user so files in the Git repo remain user-owned.
+    if sudo env -u TAR_OPTIONS /usr/bin/tar \
+            --create \
+            --file=- \
+            --directory="$parent" \
+            -- "$base" \
+        | env -u TAR_OPTIONS /usr/bin/tar \
+            --extract \
+            --file=- \
+            --directory="$tmp" \
+            --no-same-owner
+    then
+        mkdir -p "$(dirname "$dest")"
+
+        # Only destroy the previous capture AFTER the new one succeeded.
+        rm -rf "$dest"
+        mv "$tmp/$base" "$dest"
+    else
+        echo "WARNING: Failed to capture $src" >&2
+    fi
+
+    rm -rf "$tmp"
+}
+
+
+capture_user_tree()
+{
+    local src="$1"
+    local rel="${src#$HOME/}"
+    local dest="$REPO/user/$rel"
+
+    if [[ ! -d "$src" ]]; then
+        rm -rf "$dest"
+        return
+    fi
+
+    rm -rf "$dest"
+    mkdir -p "$(dirname "$dest")"
+
+    cp -a "$src" "$dest"
+}
+
+
+capture_user_file()
+{
+    local src="$1"
+    local rel="${src#$HOME/}"
+    local dest="$REPO/user/$rel"
+
+    if [[ ! -f "$src" ]]; then
+        rm -f "$dest"
+        return
+    fi
+
+    mkdir -p "$(dirname "$dest")"
+    cp -a "$src" "$dest"
+}
+
+
+capture_user_state_file()
+{
+    local src="$1"
+    local rel="${src#$HOME/}"
+    local dest="$STATE/user/$rel"
+
+    if [[ ! -f "$src" ]]; then
+        rm -f "$dest"
+        return
+    fi
+
+    mkdir -p "$(dirname "$dest")"
+    cp -a "$src" "$dest"
+}
+
+
+capture_user_state_tree()
+{
+    local src="$1"
+    local rel="${src#$HOME/}"
+    local dest="$STATE/user/$rel"
+
+    if [[ ! -d "$src" ]]; then
+        rm -rf "$dest"
+        return
+    fi
+
+    rm -rf "$dest"
+    mkdir -p "$(dirname "$dest")"
+    cp -a "$src" "$dest"
+}
+
+
+capture_git_repo_inventory()
+{
+    local output="$1"
+    shift
+
+    : > "$output"
+
+    local root
+    local git_dir
+    local repo
+    local rel
+    local remote
+    local branch
+    local commit
+    local dirty
+
+    for root in "$@"; do
+        [[ -d "$root" ]] || continue
+
+        while IFS= read -r -d '' git_dir; do
+            repo="${git_dir%/.git}"
+            rel="${repo#$HOME/}"
+
+            remote="$(
+                git -C "$repo" remote get-url origin 2>/dev/null \
+                    || printf '%s' '-'
+            )"
+
+            branch="$(
+                git -C "$repo" branch --show-current 2>/dev/null
+            )"
+
+            [[ -n "$branch" ]] || branch="DETACHED"
+
+            commit="$(
+                git -C "$repo" rev-parse HEAD 2>/dev/null \
+                    || printf '%s' '-'
+            )"
+
+            if [[ -n "$(git -C "$repo" status --porcelain 2>/dev/null)" ]]; then
+                dirty="DIRTY"
+            else
+                dirty="clean"
+            fi
+
+            printf '%s\t%s\t%s\t%s\t%s\n' \
+                "$rel" \
+                "$remote" \
+                "$branch" \
+                "$commit" \
+                "$dirty" \
+                >> "$output"
+
+        done < <(
+            find "$root" \
+                -type d \
+                -name .git \
+                -prune \
+                -print0 2>/dev/null
+        )
+    done
+    LC_ALL=C sort -o "$output" "$output"
+}
+
+
 # ---------------------------------------------------------------------------
 # Pacman / package state
 # ---------------------------------------------------------------------------
@@ -61,11 +240,7 @@ pacman -Q    | LC_ALL=C sort > "$PACKAGES/all-versioned.txt"
 
 # Flatpak
 if command -v flatpak >/dev/null 2>&1; then
-    flatpak list \
-        --app \
-        --columns=application \
-        | LC_ALL=C sort \
-        > "$PACKAGES/flatpak.txt"
+    flatpak list --app --columns=application | LC_ALL=C sort > "$PACKAGES/flatpak.txt"
 else
     rm -f "$PACKAGES/flatpak.txt"
 fi
@@ -73,9 +248,7 @@ fi
 
 # VS Code / Code extensions
 if command -v code >/dev/null 2>&1; then
-    code --list-extensions \
-        | LC_ALL=C sort \
-        > "$PACKAGES/code-extensions.txt"
+    code --list-extensions | LC_ALL=C sort > "$PACKAGES/code-extensions.txt"
 fi
 
 
@@ -101,8 +274,7 @@ systemctl --user list-unit-files \
     > "$STATE/systemd-user-enabled.txt" 2>/dev/null || true
 
 
-systemctl get-default \
-    > "$STATE/systemd-default-target.txt" 2>&1 || true
+systemctl get-default > "$STATE/systemd-default-target.txt" 2>&1 || true
 
 
 # ---------------------------------------------------------------------------
@@ -111,50 +283,48 @@ systemctl get-default \
 
 uname -a > "$STATE/uname.txt"
 
-cat /proc/cmdline \
-    > "$STATE/kernel-cmdline.txt"
+cat /proc/cmdline > "$STATE/kernel-cmdline.txt"
 
-hostnamectl \
-    | grep -vE '^[[:space:]]*(Machine ID|Boot ID):' \
-    > "$STATE/hostnamectl.txt" 2>&1 || true
+hostnamectl | grep -vE '^[[:space:]]*(Machine ID|Boot ID):' > "$STATE/hostnamectl.txt" 2>&1 || true
 
-localectl status \
-    > "$STATE/localectl.txt" 2>&1 || true
+localectl status > "$STATE/localectl.txt" 2>&1 || true
 
-timedatectl \
+timedatectl show \
+    -p Timezone \
+    -p LocalRTC \
+    -p NTP \
     > "$STATE/timedatectl.txt" 2>&1 || true
 
+lsmod > "$STATE/lsmod.txt"
 
 # ---------------------------------------------------------------------------
 # Hardware / filesystem layout
 # ---------------------------------------------------------------------------
 
-lsblk -f \
-    > "$STATE/lsblk.txt"
+lsblk -f > "$STATE/lsblk.txt"
 
-findmnt \
-    > "$STATE/findmnt.txt"
+findmnt > "$STATE/findmnt.txt"
 
-lspci -nnk \
-    > "$STATE/lspci.txt"
+# Basic PCI hardware inventory; does not require kernel module metadata.
+lspci -nn > "$STATE/lspci.txt" 2>&1 || true
 
-lsusb \
-    > "$STATE/lsusb.txt"
+# Driver/module association. May report unavailable module metadata
+# immediately after a kernel package upgrade but before reboot.
+lspci -nnk > "$STATE/lspci-kernel-drivers.txt" 2>&1 || true
+
+lsusb > "$STATE/lsusb.txt"
 
 
 # ---------------------------------------------------------------------------
 # Boot environment
 # ---------------------------------------------------------------------------
 
-bootctl status \
-    > "$STATE/bootctl.txt" 2>&1 || true
+bootctl status > "$STATE/bootctl.txt" 2>&1 || true
 
 if command -v sbctl >/dev/null 2>&1; then
-    sbctl status \
-        > "$STATE/sbctl-status.txt" 2>&1 || true
+    sbctl status > "$STATE/sbctl-status.txt" 2>&1 || true
 
-    sbctl verify \
-        > "$STATE/sbctl-verify.txt" 2>&1 || true
+    sbctl verify > "$STATE/sbctl-verify.txt" 2>&1 || true
 fi
 
 
@@ -173,28 +343,18 @@ fi
 
 if (( HAVE_SUDO )); then
 
-    sudo blkid \
-        > "$STATE/blkid.txt" 2>&1 || true
+    sudo blkid > "$STATE/blkid.txt" 2>&1 || true
 
-    sudo efibootmgr -v \
-        > "$STATE/efibootmgr.txt" 2>&1 || true
+    sudo efibootmgr -v > "$STATE/efibootmgr.txt" 2>&1 || true
 
-    sudo btrfs subvolume list / \
-        > "$STATE/btrfs-subvolumes.txt" 2>&1 || true
-
-    sudo btrfs filesystem show \
-        > "$STATE/btrfs-filesystems.txt" 2>&1 || true
-
+    sudo btrfs subvolume list / | awk '$NF !~ /(^|\/)\.snapshots(\/|$)/' > "$STATE/btrfs-subvolumes.txt" 2>&1 || true
 
     if command -v pvs >/dev/null 2>&1; then
-        sudo pvs \
-            > "$STATE/lvm-pvs.txt" 2>&1 || true
+        sudo pvs > "$STATE/lvm-pvs.txt" 2>&1 || true
 
-        sudo vgs \
-            > "$STATE/lvm-vgs.txt" 2>&1 || true
+        sudo vgs > "$STATE/lvm-vgs.txt" 2>&1 || true
 
-        sudo lvs -a -o +devices \
-            > "$STATE/lvm-lvs.txt" 2>&1 || true
+        sudo lvs -a -o +devices > "$STATE/lvm-lvs.txt" 2>&1 || true
     fi
 
 
@@ -203,22 +363,140 @@ if (( HAVE_SUDO )); then
     # -----------------------------------------------------------------------
 
     capture_root_file /etc/fstab
+    capture_root_file /etc/crypttab
+    
     capture_root_file /etc/mkinitcpio.conf
+    
     capture_root_file /etc/pacman.conf
     capture_root_file /etc/makepkg.conf
-
+    
     capture_root_file /etc/hostname
+    capture_root_file /etc/hosts
+    
     capture_root_file /etc/locale.conf
+    capture_root_file /etc/locale.gen
     capture_root_file /etc/vconsole.conf
-    capture_root_file /etc/crypttab
-
-    capture_root_file /etc/kernel/cmdline
-    capture_root_file /etc/kernel/uki.conf
-
+    
+    capture_root_file /etc/environment
+    
     capture_root_file /etc/snapper/configs/root
-
+    
     capture_root_file /efi/loader/loader.conf
 
+    capture_root_file /etc/systemd/logind.conf
+    capture_root_file /etc/systemd/sleep.conf
+    capture_root_file /etc/systemd/resolved.conf
+    capture_root_file /etc/systemd/timesyncd.conf
+    capture_root_file /etc/systemd/journald.conf
+    
+    capture_root_file /etc/ssh/sshd_config
+
+    # -----------------------------------------------------------------------
+    # Local system configuration trees
+    # -----------------------------------------------------------------------
+    
+    capture_root_tree /etc/pacman.d/hooks
+    
+    capture_root_tree /etc/modprobe.d
+    capture_root_tree /etc/modules-load.d
+    
+    capture_root_tree /etc/udev/rules.d
+    
+    capture_root_tree /etc/sysctl.d
+    capture_root_tree /etc/tmpfiles.d
+    
+    capture_root_tree /etc/systemd/system
+    capture_root_tree /etc/systemd/user
+    
+    capture_root_tree /etc/mkinitcpio.d
+    capture_root_tree /etc/kernel
+    
+    capture_root_tree /etc/sddm.conf.d
+    
+    capture_root_tree /etc/X11/xorg.conf.d
+    
+    capture_root_tree /etc/environment.d
+    
+    capture_root_tree /etc/NetworkManager/conf.d
+    capture_root_tree /etc/NetworkManager/dispatcher.d
+
+    capture_root_tree /etc/systemd/logind.conf.d
+    capture_root_tree /etc/systemd/sleep.conf.d
+    capture_root_tree /etc/systemd/resolved.conf.d
+    capture_root_tree /etc/systemd/timesyncd.conf.d
+    capture_root_tree /etc/systemd/journald.conf.d
+    
+    capture_root_tree /etc/security/limits.d
+    capture_root_tree /etc/ssh/sshd_config.d
+
+    capture_root_tree /usr/local/bin
+
+    # -----------------------------------------------------------------------
+    # User configuration trees/files
+    # -----------------------------------------------------------------------
+    capture_user_tree "$HOME/.config/systemd/user"
+    capture_user_tree "$HOME/.config/environment.d"
+    capture_user_tree "$HOME/.config/autostart"
+
+    capture_user_file "$HOME/.local/share/applications/sierra.desktop"
+    capture_user_file "$HOME/.local/share/applications/trading-dashboard.desktop"
+
+    capture_user_file "$HOME/.ssh/config"
+
+    capture_user_file "$HOME/.config/mimeapps.list"
+
+    capture_user_file "$HOME/.config/user-dirs.dirs"
+    capture_user_file "$HOME/.config/user-dirs.locale"
+
+    # ---------------------------------------------------------------------------
+    # KDE / Plasma user configuration
+    # ---------------------------------------------------------------------------
+    
+    capture_user_file "$HOME/.config/kdeglobals"
+    
+    capture_user_file "$HOME/.config/kglobalshortcutsrc"
+    
+    capture_user_file "$HOME/.config/kcminputrc"
+    capture_user_file "$HOME/.config/kscreenlockerrc"
+    
+    capture_user_file "$HOME/.config/kwinrc"
+    capture_user_file "$HOME/.config/kwinrulesrc"
+    
+    capture_user_file "$HOME/.config/plasma-localerc"
+    
+    capture_user_file "$HOME/.config/plasma-org.kde.plasma.desktop-appletsrc"
+    
+    capture_user_file "$HOME/.config/plasmanotifyrc"
+    capture_user_file "$HOME/.config/plasmarc"
+    capture_user_file "$HOME/.config/plasmashellrc"
+    
+    capture_user_file "$HOME/.config/powerdevilrc"
+    capture_user_file "$HOME/.config/powermanagementprofilesrc"
+
+    capture_user_file "$HOME/.config/plasmaparc"
+    capture_user_file "$HOME/.config/kded5rc" 
+
+    capture_user_state_file "$HOME/.config/kwinoutputconfig.json"
+    capture_user_state_file "$HOME/.config/kde.org/kwin.conf"
+
+    capture_user_state_tree "$HOME/.config/kdedefaults"
+
+    # ---------------------------------------------------------------------------
+    # Code OSS
+    # ---------------------------------------------------------------------------
+    
+    capture_user_file "$HOME/.config/Code - OSS/User/settings.json"
+    capture_user_file "$HOME/.config/Code - OSS/User/keybindings.json"
+    
+    capture_user_tree "$HOME/.config/Code - OSS/User/snippets"
+
+    # ---------------------------------------------------------------------------
+    # VIM Plugins
+    # ---------------------------------------------------------------------------
+
+    capture_git_repo_inventory \
+        "$STATE/vim-plugin-git.txt" \
+        "$HOME/.vim/pack"
 
     # Copy loader entry .conf files, but NOT random-seed or EFI binaries.
     if sudo test -d /efi/loader/entries; then
@@ -243,28 +521,23 @@ fi
 # ---------------------------------------------------------------------------
 
 if command -v cargo >/dev/null 2>&1; then
-    cargo install --list \
-        > "$STATE/cargo-installed.txt" 2>&1 || true
+    cargo install --list > "$STATE/cargo-installed.txt" 2>&1 || true
 fi
 
 if command -v rustup >/dev/null 2>&1; then
-    rustup toolchain list \
-        > "$STATE/rust-toolchains.txt" 2>&1 || true
+    rustup toolchain list > "$STATE/rust-toolchains.txt" 2>&1 || true
 fi
 
 if command -v uv >/dev/null 2>&1; then
-    uv tool list \
-        > "$STATE/uv-tools.txt" 2>&1 || true
+    uv tool list > "$STATE/uv-tools.txt" 2>&1 || true
 fi
 
 if command -v pipx >/dev/null 2>&1; then
-    pipx list --short \
-        > "$STATE/pipx.txt" 2>&1 || true
+    pipx list --short > "$STATE/pipx.txt" 2>&1 || true
 fi
 
 if command -v npm >/dev/null 2>&1; then
-    npm --global ls --depth=0 \
-        > "$STATE/npm-global.txt" 2>&1 || true
+    npm --global ls --depth=0 > "$STATE/npm-global.txt" 2>&1 || true
 fi
 
 

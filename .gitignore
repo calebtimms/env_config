@@ -28,3 +28,12 @@ id_ed25519.*
 
 # Never save these if accidentally copied
 random-seed
+
+# SSH private/public identity material
+user/.ssh/id_*
+user/.ssh/*.pem
+user/.ssh/*.key
+
+# SSH runtime/state
+user/.ssh/known_hosts
+user/.ssh/known_hosts.old

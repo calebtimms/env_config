@@ -1,15 +1,2 @@
-ID 256 gen 7069 top level 5 path @
-ID 257 gen 7069 top level 5 path @home
-ID 258 gen 7053 top level 256 path .snapshots
-ID 301 gen 3520 top level 258 path .snapshots/43/snapshot
-ID 302 gen 3521 top level 258 path .snapshots/44/snapshot
-ID 303 gen 3554 top level 258 path .snapshots/45/snapshot
-ID 304 gen 3555 top level 258 path .snapshots/46/snapshot
-ID 305 gen 5250 top level 258 path .snapshots/47/snapshot
-ID 306 gen 5251 top level 258 path .snapshots/48/snapshot
-ID 307 gen 6440 top level 258 path .snapshots/49/snapshot
-ID 308 gen 6442 top level 258 path .snapshots/50/snapshot
-ID 309 gen 7021 top level 258 path .snapshots/51/snapshot
-ID 310 gen 7022 top level 258 path .snapshots/52/snapshot
-ID 311 gen 7051 top level 258 path .snapshots/53/snapshot
-ID 312 gen 7052 top level 258 path .snapshots/54/snapshot
+ID 256 gen 7166 top level 5 path @
+ID 257 gen 7167 top level 5 path @home

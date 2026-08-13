@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Sierra Chart
+Comment=Trading and charting platform
+Exec=/usr/local/bin/sierra
+Icon=/home/Timmseh/.local/share/icons/sierra.png
+Terminal=false
+Categories=Office;Finance;
+StartupNotify=true
+StartupWMClass=sierrachart_64.exe

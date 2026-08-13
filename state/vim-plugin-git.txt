@@ -1,0 +1,7 @@
+.vim/pack/plugins/start/airline	https://github.com/vim-airline/vim-airline.git	master	9e0beefd6e28c92d876559f07d8595f454c08cb7	clean
+.vim/pack/plugins/start/airline-themes	https://github.com/vim-airline/vim-airline-themes.git	master	77aab8c6cf7179ddb8a05741da7e358a86b2c3ab	clean
+.vim/pack/plugins/start/ctrlp	https://github.com/ctrlpvim/ctrlp.vim.git	master	3739dcd638f457559d5a1ae1e398276175694e4b	clean
+.vim/pack/plugins/start/fugitive	https://github.com/tpope/vim-fugitive.git	master	3b753cf8c6a4dcde6edee8827d464ba9b8c4a6f0	clean
+.vim/pack/plugins/start/gitgutter	https://github.com/airblade/vim-gitgutter.git	main	90b75207bd9b55d8ac4af15f72b4e935462014d0	clean
+.vim/pack/plugins/start/nerdtree	https://github.com/preservim/nerdtree.git	master	690d061b591525890f1471c6675bcb5bdc8cdff9	clean
+.vim/pack/plugins/start/obsession	https://github.com/tpope/vim-obsession.git	master	ed9dfc7c2cc917ace8b24f4f9f80a91e05614b63	DIRTY

@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=TradingDashboard
+Comment=Local-first futures trading journal and performance dashboard
+Exec="/home/Timmseh/TradingDashboard/dist/linux/TradingDashboard/TradingDashboard"
+Icon=trading-dashboard
+Terminal=false
+Categories=Office;Finance;
+StartupWMClass=TradingDashboard
