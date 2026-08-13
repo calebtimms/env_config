@@ -439,6 +439,7 @@ if (( HAVE_SUDO )); then
     capture_user_tree "$HOME/.config/autostart"
 
     capture_user_file "$HOME/.local/share/applications/sierra.desktop"
+    capture_user_file "$HOME/.local/share/icons/sierra.png"
     capture_user_file "$HOME/.local/share/applications/trading-dashboard.desktop"
 
     capture_user_file "$HOME/.ssh/config"
@@ -481,6 +482,16 @@ if (( HAVE_SUDO )); then
 
     capture_user_state_tree "$HOME/.config/kdedefaults"
 
+    capture_user_file "$HOME/.config/spectaclerc"
+
+    # ---------------------------------------------------------------------------
+    # Locally installed KDE / KWin extensions
+    # ---------------------------------------------------------------------------
+    
+    capture_user_tree "$HOME/.local/share/kwin/scripts"
+    capture_user_tree "$HOME/.local/share/kwin/effects"
+    capture_user_tree "$HOME/.local/share/plasma/plasmoids"
+
     # ---------------------------------------------------------------------------
     # Code OSS
     # ---------------------------------------------------------------------------
@@ -497,6 +508,19 @@ if (( HAVE_SUDO )); then
     capture_git_repo_inventory \
         "$STATE/vim-plugin-git.txt" \
         "$HOME/.vim/pack"
+
+    # ---------------------------------------------------------------------------
+    # GTK Config
+    # ---------------------------------------------------------------------------
+
+    capture_user_file "$HOME/.config/gtk-3.0/settings.ini"
+    capture_user_file "$HOME/.config/gtk-3.0/gtk.css"
+    
+    capture_user_file "$HOME/.config/gtk-4.0/settings.ini"
+    capture_user_file "$HOME/.config/gtk-4.0/gtk.css"
+
+    # GTK/XSettings integration
+    capture_user_tree "$HOME/.config/xsettingsd"
 
     # Copy loader entry .conf files, but NOT random-seed or EFI binaries.
     if sudo test -d /efi/loader/entries; then
