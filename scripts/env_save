@@ -1,0 +1,279 @@
+#!/usr/bin/env bash
+
+set -uo pipefail
+
+REPO="${ENV_CONFIG_REPO:-$HOME/env_config}"
+
+PACKAGES="$REPO/packages"
+STATE="$REPO/state"
+SYSTEM="$REPO/system"
+
+mkdir -p \
+    "$PACKAGES" \
+    "$STATE" \
+    "$SYSTEM/etc" \
+    "$SYSTEM/efi"
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+run_if_exists()
+{
+    local command_name="$1"
+    local output="$2"
+    shift 2
+
+    if command -v "$command_name" >/dev/null 2>&1; then
+        "$@" > "$output" 2>&1 || true
+    else
+        rm -f "$output"
+    fi
+}
+
+
+capture_root_file()
+{
+    local src="$1"
+    local dest="$SYSTEM/${src#/}"
+
+    if ! sudo test -f "$src"; then
+        return
+    fi
+
+    mkdir -p "$(dirname "$dest")"
+
+    # sudo reads the protected file, but the user's shell creates the
+    # destination so the resulting Git file remains owned by the user.
+    sudo cat "$src" > "$dest"
+}
+
+
+# ---------------------------------------------------------------------------
+# Pacman / package state
+# ---------------------------------------------------------------------------
+
+pacman -Qqen | LC_ALL=C sort > "$PACKAGES/official.txt"
+pacman -Qqem | LC_ALL=C sort > "$PACKAGES/foreign.txt"
+pacman -Q    | LC_ALL=C sort > "$PACKAGES/all-versioned.txt"
+
+
+# Flatpak
+if command -v flatpak >/dev/null 2>&1; then
+    flatpak list \
+        --app \
+        --columns=application \
+        | LC_ALL=C sort \
+        > "$PACKAGES/flatpak.txt"
+else
+    rm -f "$PACKAGES/flatpak.txt"
+fi
+
+
+# VS Code / Code extensions
+if command -v code >/dev/null 2>&1; then
+    code --list-extensions \
+        | LC_ALL=C sort \
+        > "$PACKAGES/code-extensions.txt"
+fi
+
+
+# ---------------------------------------------------------------------------
+# systemd state
+# ---------------------------------------------------------------------------
+
+systemctl list-unit-files \
+    --state=enabled \
+    --no-legend \
+    --no-pager \
+    | awk '{print $1}' \
+    | LC_ALL=C sort \
+    > "$STATE/systemd-system-enabled.txt"
+
+
+systemctl --user list-unit-files \
+    --state=enabled \
+    --no-legend \
+    --no-pager \
+    | awk '{print $1}' \
+    | LC_ALL=C sort \
+    > "$STATE/systemd-user-enabled.txt" 2>/dev/null || true
+
+
+systemctl get-default \
+    > "$STATE/systemd-default-target.txt" 2>&1 || true
+
+
+# ---------------------------------------------------------------------------
+# Basic system information
+# ---------------------------------------------------------------------------
+
+uname -a > "$STATE/uname.txt"
+
+cat /proc/cmdline \
+    > "$STATE/kernel-cmdline.txt"
+
+hostnamectl \
+    | grep -vE '^[[:space:]]*(Machine ID|Boot ID):' \
+    > "$STATE/hostnamectl.txt" 2>&1 || true
+
+localectl status \
+    > "$STATE/localectl.txt" 2>&1 || true
+
+timedatectl \
+    > "$STATE/timedatectl.txt" 2>&1 || true
+
+
+# ---------------------------------------------------------------------------
+# Hardware / filesystem layout
+# ---------------------------------------------------------------------------
+
+lsblk -f \
+    > "$STATE/lsblk.txt"
+
+findmnt \
+    > "$STATE/findmnt.txt"
+
+lspci -nnk \
+    > "$STATE/lspci.txt"
+
+lsusb \
+    > "$STATE/lsusb.txt"
+
+
+# ---------------------------------------------------------------------------
+# Boot environment
+# ---------------------------------------------------------------------------
+
+bootctl status \
+    > "$STATE/bootctl.txt" 2>&1 || true
+
+if command -v sbctl >/dev/null 2>&1; then
+    sbctl status \
+        > "$STATE/sbctl-status.txt" 2>&1 || true
+
+    sbctl verify \
+        > "$STATE/sbctl-verify.txt" 2>&1 || true
+fi
+
+
+# ---------------------------------------------------------------------------
+# Root-access state
+# ---------------------------------------------------------------------------
+
+HAVE_SUDO=0
+
+if [[ "${1:-}" != "--no-root" ]]; then
+    if sudo -v; then
+        HAVE_SUDO=1
+    fi
+fi
+
+
+if (( HAVE_SUDO )); then
+
+    sudo blkid \
+        > "$STATE/blkid.txt" 2>&1 || true
+
+    sudo efibootmgr -v \
+        > "$STATE/efibootmgr.txt" 2>&1 || true
+
+    sudo btrfs subvolume list / \
+        > "$STATE/btrfs-subvolumes.txt" 2>&1 || true
+
+    sudo btrfs filesystem show \
+        > "$STATE/btrfs-filesystems.txt" 2>&1 || true
+
+
+    if command -v pvs >/dev/null 2>&1; then
+        sudo pvs \
+            > "$STATE/lvm-pvs.txt" 2>&1 || true
+
+        sudo vgs \
+            > "$STATE/lvm-vgs.txt" 2>&1 || true
+
+        sudo lvs -a -o +devices \
+            > "$STATE/lvm-lvs.txt" 2>&1 || true
+    fi
+
+
+    # -----------------------------------------------------------------------
+    # Carefully selected system configuration
+    # -----------------------------------------------------------------------
+
+    capture_root_file /etc/fstab
+    capture_root_file /etc/mkinitcpio.conf
+    capture_root_file /etc/pacman.conf
+    capture_root_file /etc/makepkg.conf
+
+    capture_root_file /etc/hostname
+    capture_root_file /etc/locale.conf
+    capture_root_file /etc/vconsole.conf
+    capture_root_file /etc/crypttab
+
+    capture_root_file /etc/kernel/cmdline
+    capture_root_file /etc/kernel/uki.conf
+
+    capture_root_file /etc/snapper/configs/root
+
+    capture_root_file /efi/loader/loader.conf
+
+
+    # Copy loader entry .conf files, but NOT random-seed or EFI binaries.
+    if sudo test -d /efi/loader/entries; then
+        mkdir -p "$SYSTEM/efi/loader/entries"
+
+        while IFS= read -r entry; do
+            dest="$SYSTEM/${entry#/}"
+            sudo cat "$entry" > "$dest"
+        done < <(
+            sudo find /efi/loader/entries \
+                -maxdepth 1 \
+                -type f \
+                -name '*.conf' \
+                -print
+        )
+    fi
+fi
+
+
+# ---------------------------------------------------------------------------
+# Optional user-space development tools
+# ---------------------------------------------------------------------------
+
+if command -v cargo >/dev/null 2>&1; then
+    cargo install --list \
+        > "$STATE/cargo-installed.txt" 2>&1 || true
+fi
+
+if command -v rustup >/dev/null 2>&1; then
+    rustup toolchain list \
+        > "$STATE/rust-toolchains.txt" 2>&1 || true
+fi
+
+if command -v uv >/dev/null 2>&1; then
+    uv tool list \
+        > "$STATE/uv-tools.txt" 2>&1 || true
+fi
+
+if command -v pipx >/dev/null 2>&1; then
+    pipx list --short \
+        > "$STATE/pipx.txt" 2>&1 || true
+fi
+
+if command -v npm >/dev/null 2>&1; then
+    npm --global ls --depth=0 \
+        > "$STATE/npm-global.txt" 2>&1 || true
+fi
+
+
+# ---------------------------------------------------------------------------
+# Finish
+# ---------------------------------------------------------------------------
+
+echo
+echo "--- Environment saved ---"
+echo
+
+git -C "$REPO" status --short

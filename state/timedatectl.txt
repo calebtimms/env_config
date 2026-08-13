@@ -1,0 +1,7 @@
+               Local time: Wed 2026-08-12 22:25:44 PDT
+           Universal time: Thu 2026-08-13 05:25:44 UTC
+                 RTC time: Thu 2026-08-13 05:25:45
+                Time zone: America/Los_Angeles (PDT, -0700)
+System clock synchronized: yes
+              NTP service: active
+          RTC in local TZ: no

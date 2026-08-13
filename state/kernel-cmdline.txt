@@ -1,0 +1,1 @@
+root=/dev/mapper/arch_vg-root rw rootflags=subvol=@ loglevel=3 quiet

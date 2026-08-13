@@ -1,0 +1,21 @@
+NAME             FSTYPE      FSVER    LABEL       UUID                                   FSAVAIL FSUSE% MOUNTPOINTS
+sda                                                                                                     
+├─sda1           vfat        FAT32                C9A9-F260                                             
+├─sda2           ext4        1.0                  eeabaa72-7205-4f97-a46a-5c3d7d2458b5                  
+└─sda3           crypto_LUKS 2                    48d0ab18-b3b8-4e25-9dd6-70c64e791cee                  
+sdb                                                                                                     
+└─sdb1           ntfs                 Expansion 2 1CE80571E8054B0A                                      
+sdc                                                                                                     
+sdd                                                                                                     
+sde                                                                                                     
+└─sde1           ntfs                 My Passport F6E0C1E8E0C1AEE5                                      
+nvme1n1                                                                                                 
+├─nvme1n1p1      vfat        FAT32    ARCH_EFI    915D-8BC2                                 1.4G    28% /efi
+└─nvme1n1p2      LVM2_member LVM2 001             n1PcK8-iPBc-OGmt-q8SK-hgW6-JR8t-07kQzt                
+  └─arch_vg-root btrfs                archroot    22f7ed40-17cc-405d-8548-6030021d28c3        3T    16% /home
+                                                                                                        /
+nvme0n1                                                                                                 
+├─nvme0n1p1      vfat        FAT32                DCE3-60C6                                             
+├─nvme0n1p2                                                                                             
+├─nvme0n1p3      ntfs                             369CE5FA9CE5B491                                      
+└─nvme0n1p4      ntfs                             62663CE9663CC019                                      

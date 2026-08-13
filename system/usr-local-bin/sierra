@@ -1,0 +1,5 @@
+#!/bin/bash
+
+export WINEPREFIX="$HOME/.wine-sierra"
+
+wine "$HOME/SierraChart/SierraChart.exe" > /dev/null 2>&1 &

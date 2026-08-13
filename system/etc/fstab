@@ -1,0 +1,5 @@
+# Unencrypted Arch installation on arch_vg
+
+UUID=22f7ed40-17cc-405d-8548-6030021d28c3  /      btrfs  rw,relatime,ssd,discard=async,space_cache=v2,subvol=@      0 0
+UUID=22f7ed40-17cc-405d-8548-6030021d28c3  /home  btrfs  rw,relatime,ssd,discard=async,space_cache=v2,subvol=@home  0 0
+UUID=915D-8BC2   /efi   vfat   rw,umask=0077                                              0 2

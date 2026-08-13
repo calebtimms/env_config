@@ -1,0 +1,30 @@
+/Session.vim
+
+# Editor junk
+*.swp
+*.swo
+*~
+*.tmp
+
+# Explicitly forbidden secret/private material
+secrets/
+private/
+
+*.pem
+*.p12
+*.pfx
+
+id_rsa
+id_rsa.*
+id_ed25519
+id_ed25519.*
+
+# Secure Boot signing material
+*.key
+*.key.pem
+
+# EFI/generated binaries
+*.efi
+
+# Never save these if accidentally copied
+random-seed

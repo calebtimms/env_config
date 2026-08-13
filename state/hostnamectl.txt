@@ -1,0 +1,13 @@
+ Static hostname: Battleship
+       Icon name: computer-desktop
+         Chassis: desktop 🖥️
+Operating System: Arch Linux
+          Kernel: Linux 7.1.6-arch1-1
+    Architecture: x86-64
+ Hardware Vendor: ASUS
+  Hardware Model: ROG CROSSHAIR X870E HERO
+    Hardware SKU: SKU
+Hardware Version: System Version
+Firmware Version: 1003
+   Firmware Date: Fri 2025-01-17
+    Firmware Age: 1y 6month 3w 4d

@@ -1,0 +1,2 @@
+  LV   VG      Attr       LSize  Pool Origin Data%  Meta%  Move Log Cpy%Sync Convert Devices          
+  root arch_vg -wi-ao---- <3.64t                                                     /dev/nvme1n1p2(0)
