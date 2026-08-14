@@ -263,13 +263,48 @@ systemctl list-unit-files \
     > "$STATE/systemd-system-enabled.txt"
 
 
-systemctl --user list-unit-files \
+# ---------------------------------------------------------------------------
+# User systemd enablement
+#
+# systemctl --user reports the effective user-unit view, which includes
+# units enabled globally for all users. Save global enablement separately,
+# then record only the additional per-user enablement in user-enabled.txt.
+# ---------------------------------------------------------------------------
+
+if systemctl --global list-unit-files \
     --state=enabled \
     --no-legend \
     --no-pager \
+    2>/dev/null \
     | awk '{print $1}' \
-    | LC_ALL=C sort \
-    > "$STATE/systemd-user-enabled.txt" 2>/dev/null || true
+    | LC_ALL=C sort -u \
+    > "$STATE/systemd-global-user-enabled.txt"
+then
+    :
+else
+    rm -f "$STATE/systemd-global-user-enabled.txt"
+fi
+
+
+if [[ -f "$STATE/systemd-global-user-enabled.txt" ]]; then
+
+    comm -23 \
+        <(
+            systemctl --user list-unit-files \
+                --state=enabled \
+                --no-legend \
+                --no-pager \
+                2>/dev/null \
+                | awk '{print $1}' \
+                | LC_ALL=C sort -u
+        ) \
+        "$STATE/systemd-global-user-enabled.txt" \
+        > "$STATE/systemd-user-enabled.txt" \
+        || true
+
+else
+    rm -f "$STATE/systemd-user-enabled.txt"
+fi
 
 
 systemctl get-default > "$STATE/systemd-default-target.txt" 2>&1 || true

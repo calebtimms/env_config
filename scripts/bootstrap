@@ -373,6 +373,411 @@ restore_system_safe()
 }
 
 
+restore_services()
+{
+    local saved_system="$STATE/systemd-system-enabled.txt"
+    local saved_global_user="$STATE/systemd-global-user-enabled.txt"
+    local saved_user="$STATE/systemd-user-enabled.txt"
+    local saved_target_file="$STATE/systemd-default-target.txt"
+
+    local tmp_system
+    local tmp_global_user
+    local tmp_user
+
+    local missing_system
+    local missing_global_user
+    local missing_user
+
+    local verify_system
+    local verify_global_user
+    local verify_user
+
+    local unit
+    local current_target=""
+    local saved_target=""
+    local verified_target=""
+
+    local -a system_enable=()
+    local -a global_user_enable=()
+    local -a user_enable=()
+
+    local -a system_missing=()
+    local -a global_user_missing=()
+    local -a user_missing=()
+
+    local changes=0
+    local restore_target=0
+
+
+    [[ -f "$saved_system" ]] \
+        || die "Missing saved systemd system-unit state: $saved_system"
+
+
+    tmp_system="$(mktemp)"
+    tmp_global_user="$(mktemp)"
+    tmp_user="$(mktemp)"
+
+    missing_system="$(mktemp)"
+    missing_global_user="$(mktemp)"
+    missing_user="$(mktemp)"
+
+
+    info "Systemd service restoration"
+
+
+    # -----------------------------------------------------------------------
+    # System services
+    # -----------------------------------------------------------------------
+
+    get_enabled_system_units "$tmp_system"
+
+    comm -23 \
+        "$saved_system" \
+        "$tmp_system" \
+        > "$missing_system"
+
+    while IFS= read -r unit; do
+        [[ -n "$unit" ]] || continue
+
+        if system_unit_exists "$unit"; then
+            system_enable+=("$unit")
+        else
+            system_missing+=("$unit")
+        fi
+
+    done < "$missing_system"
+
+
+    # -----------------------------------------------------------------------
+    # Global user services
+    # -----------------------------------------------------------------------
+
+    if [[ -f "$saved_global_user" ]]; then
+
+        if get_enabled_global_user_units "$tmp_global_user"; then
+
+            comm -23 \
+                "$saved_global_user" \
+                "$tmp_global_user" \
+                > "$missing_global_user"
+
+            while IFS= read -r unit; do
+                [[ -n "$unit" ]] || continue
+
+                if global_user_unit_exists "$unit"; then
+                    global_user_enable+=("$unit")
+                else
+                    global_user_missing+=("$unit")
+                fi
+
+            done < "$missing_global_user"
+
+        else
+            warn "Could not query global user systemd units."
+        fi
+    fi
+
+
+    # -----------------------------------------------------------------------
+    # Per-user services
+    # -----------------------------------------------------------------------
+
+    if [[ -f "$saved_user" ]]; then
+
+        if get_enabled_user_units "$tmp_user"; then
+
+            comm -23 \
+                "$saved_user" \
+                "$tmp_user" \
+                > "$missing_user"
+
+            while IFS= read -r unit; do
+                [[ -n "$unit" ]] || continue
+
+                if user_unit_exists "$unit"; then
+                    user_enable+=("$unit")
+                else
+                    user_missing+=("$unit")
+                fi
+
+            done < "$missing_user"
+
+        else
+            warn "Could not query the user systemd manager; user units will be skipped."
+        fi
+    fi
+
+
+    # -----------------------------------------------------------------------
+    # Default target
+    # -----------------------------------------------------------------------
+
+    if [[ -f "$saved_target_file" ]]; then
+
+        saved_target="$(<"$saved_target_file")"
+        current_target="$(systemctl get-default 2>/dev/null || true)"
+
+        if [[ -n "$saved_target" \
+            && -n "$current_target" \
+            && "$saved_target" != "$current_target" ]]
+        then
+            restore_target=1
+        fi
+    fi
+
+
+    # -----------------------------------------------------------------------
+    # Preview
+    # -----------------------------------------------------------------------
+
+    echo "Changes required:"
+    echo
+
+    for unit in "${system_enable[@]}"; do
+        printf 'ENABLE    system       %s\n' "$unit"
+        changes=$((changes + 1))
+    done
+
+    for unit in "${global_user_enable[@]}"; do
+        printf 'ENABLE    global-user  %s\n' "$unit"
+        changes=$((changes + 1))
+    done
+
+    for unit in "${user_enable[@]}"; do
+        printf 'ENABLE    user         %s\n' "$unit"
+        changes=$((changes + 1))
+    done
+
+
+    if (( restore_target )); then
+        printf 'TARGET    system       %s -> %s\n' \
+            "$current_target" \
+            "$saved_target"
+
+        changes=$((changes + 1))
+    fi
+
+
+    for unit in "${system_missing[@]}"; do
+        printf 'SKIP      system       %s  (unit not installed)\n' "$unit"
+    done
+
+    for unit in "${global_user_missing[@]}"; do
+        printf 'SKIP      global-user  %s  (unit not installed)\n' "$unit"
+    done
+
+    for unit in "${user_missing[@]}"; do
+        printf 'SKIP      user         %s  (unit not installed)\n' "$unit"
+    done
+
+
+    if (( changes == 0 )); then
+        echo
+        echo "No systemd enablement changes are required."
+
+        rm -f \
+            "$tmp_system" \
+            "$tmp_global_user" \
+            "$tmp_user" \
+            "$missing_system" \
+            "$missing_global_user" \
+            "$missing_user"
+
+        return
+    fi
+
+
+    # -----------------------------------------------------------------------
+    # Confirmation
+    # -----------------------------------------------------------------------
+
+    echo
+    echo "$changes systemd changes would be made."
+    echo
+    echo "Units will be enabled but NOT started or restarted."
+    echo
+
+    if ! confirm "Restore saved systemd enablement?"; then
+
+        rm -f \
+            "$tmp_system" \
+            "$tmp_global_user" \
+            "$tmp_user" \
+            "$missing_system" \
+            "$missing_global_user" \
+            "$missing_user"
+
+        return
+    fi
+
+
+    # -----------------------------------------------------------------------
+    # Rollback log
+    # -----------------------------------------------------------------------
+
+    mkdir -p "$BACKUP_ROOT/services"
+
+    chmod 700 \
+        "$BACKUP_ROOT" \
+        "$BACKUP_ROOT/services"
+
+    : > "$BACKUP_ROOT/services/system-enabled-by-bootstrap.txt"
+    : > "$BACKUP_ROOT/services/global-user-enabled-by-bootstrap.txt"
+    : > "$BACKUP_ROOT/services/user-enabled-by-bootstrap.txt"
+
+    chmod 600 \
+        "$BACKUP_ROOT/services/system-enabled-by-bootstrap.txt" \
+        "$BACKUP_ROOT/services/global-user-enabled-by-bootstrap.txt" \
+        "$BACKUP_ROOT/services/user-enabled-by-bootstrap.txt"
+
+
+    # -----------------------------------------------------------------------
+    # Apply
+    # -----------------------------------------------------------------------
+
+    for unit in "${system_enable[@]}"; do
+
+        echo "Enabling system unit: $unit"
+
+        if sudo systemctl enable "$unit"; then
+            printf '%s\n' "$unit" \
+                >> "$BACKUP_ROOT/services/system-enabled-by-bootstrap.txt"
+        else
+            warn "Failed to enable system unit: $unit"
+        fi
+    done
+
+
+    for unit in "${global_user_enable[@]}"; do
+
+        echo "Enabling global user unit: $unit"
+
+        if sudo systemctl --global enable "$unit"; then
+            printf '%s\n' "$unit" \
+                >> "$BACKUP_ROOT/services/global-user-enabled-by-bootstrap.txt"
+        else
+            warn "Failed to enable global user unit: $unit"
+        fi
+    done
+
+
+    for unit in "${user_enable[@]}"; do
+
+        echo "Enabling user unit: $unit"
+
+        if systemctl --user enable "$unit"; then
+            printf '%s\n' "$unit" \
+                >> "$BACKUP_ROOT/services/user-enabled-by-bootstrap.txt"
+        else
+            warn "Failed to enable user unit: $unit"
+        fi
+    done
+
+
+    if (( restore_target )); then
+        echo "Setting default target: $saved_target"
+
+        sudo systemctl set-default "$saved_target"
+    fi
+
+
+    # -----------------------------------------------------------------------
+    # Verification
+    # -----------------------------------------------------------------------
+
+    echo
+    echo "Verifying systemd enablement:"
+    echo
+
+
+    verify_system="$(mktemp)"
+    verify_global_user="$(mktemp)"
+    verify_user="$(mktemp)"
+
+
+    # System units
+
+    get_enabled_system_units "$verify_system"
+
+    echo "System units requested by bootstrap but still not enabled:"
+    echo
+
+    for unit in "${system_enable[@]}"; do
+        if ! grep -Fxq "$unit" "$verify_system"; then
+            printf '%s\n' "$unit"
+        fi
+    done
+
+
+    # Global user units
+
+    if get_enabled_global_user_units "$verify_global_user"; then
+
+        echo
+        echo "Global user units requested by bootstrap but still not enabled:"
+        echo
+
+        for unit in "${global_user_enable[@]}"; do
+            if ! grep -Fxq "$unit" "$verify_global_user"; then
+                printf '%s\n' "$unit"
+            fi
+        done
+    fi
+
+
+    # Per-user units
+
+    if [[ -f "$saved_user" ]] \
+        && get_enabled_user_units "$verify_user"
+    then
+        echo
+        echo "Per-user units requested by bootstrap but still not enabled:"
+        echo
+
+        for unit in "${user_enable[@]}"; do
+            if ! grep -Fxq "$unit" "$verify_user"; then
+                printf '%s\n' "$unit"
+            fi
+        done
+    fi
+
+
+    # Default target
+
+    if [[ -n "$saved_target" ]]; then
+
+        verified_target="$(systemctl get-default 2>/dev/null || true)"
+
+        echo
+        printf 'Default target: %s\n' "$verified_target"
+
+        if [[ "$verified_target" != "$saved_target" ]]; then
+            warn "Default target does not match saved target: $saved_target"
+        fi
+    fi
+
+
+    # -----------------------------------------------------------------------
+    # Cleanup
+    # -----------------------------------------------------------------------
+
+    rm -f \
+        "$tmp_system" \
+        "$tmp_global_user" \
+        "$tmp_user" \
+        "$missing_system" \
+        "$missing_global_user" \
+        "$missing_user" \
+        "$verify_system" \
+        "$verify_global_user" \
+        "$verify_user"
+
+
+    echo
+    echo "Services were enabled only; nothing was started or restarted."
+}
+
+
 # ---------------------------------------------------------------------------
 # Packages
 # ---------------------------------------------------------------------------
@@ -843,6 +1248,117 @@ system_safe_candidates()
 
 
 # ---------------------------------------------------------------------------
+# systemd service restoration
+# ---------------------------------------------------------------------------
+
+system_unit_exists()
+{
+    local unit="$1"
+
+    systemctl list-unit-files \
+        --no-legend \
+        --no-pager \
+        "$unit" \
+        2>/dev/null \
+        | awk '{print $1}' \
+        | grep -Fxq "$unit"
+}
+
+
+user_unit_exists()
+{
+    local unit="$1"
+
+    systemctl --user list-unit-files \
+        --no-legend \
+        --no-pager \
+        "$unit" \
+        2>/dev/null \
+        | awk '{print $1}' \
+        | grep -Fxq "$unit"
+}
+
+
+get_enabled_system_units()
+{
+    local output="$1"
+
+    systemctl list-unit-files \
+        --state=enabled \
+        --no-legend \
+        --no-pager \
+        | awk '{print $1}' \
+        | LC_ALL=C sort -u \
+        > "$output"
+}
+
+
+get_enabled_global_user_units()
+{
+    local output="$1"
+
+    systemctl --global list-unit-files \
+        --state=enabled \
+        --no-legend \
+        --no-pager \
+        2>/dev/null \
+        | awk '{print $1}' \
+        | LC_ALL=C sort -u \
+        > "$output"
+}
+
+
+get_enabled_user_units()
+{
+    local output="$1"
+    local tmp_effective
+    local tmp_global
+
+    tmp_effective="$(mktemp)"
+    tmp_global="$(mktemp)"
+
+    if ! systemctl --user list-unit-files \
+        --state=enabled \
+        --no-legend \
+        --no-pager \
+        2>/dev/null \
+        | awk '{print $1}' \
+        | LC_ALL=C sort -u \
+        > "$tmp_effective"
+    then
+        rm -f "$tmp_effective" "$tmp_global"
+        return 1
+    fi
+
+    if ! get_enabled_global_user_units "$tmp_global"; then
+        rm -f "$tmp_effective" "$tmp_global"
+        return 1
+    fi
+
+    comm -23 \
+        "$tmp_effective" \
+        "$tmp_global" \
+        > "$output"
+
+    rm -f "$tmp_effective" "$tmp_global"
+}
+
+
+global_user_unit_exists()
+{
+    local unit="$1"
+
+    systemctl --global list-unit-files \
+        --no-legend \
+        --no-pager \
+        "$unit" \
+        2>/dev/null \
+        | awk '{print $1}' \
+        | grep -Fxq "$unit"
+}
+
+
+# ---------------------------------------------------------------------------
 # System configuration review
 # ---------------------------------------------------------------------------
 
@@ -1038,6 +1554,7 @@ Usage:
   bootstrap vim
   bootstrap user
   bootstrap system-safe
+  bootstrap services
   bootstrap review
   bootstrap all
 
@@ -1048,6 +1565,7 @@ Commands:
   vim           Restore pinned Vim plugin repositories and patches
   user          Restore saved user configuration
   system-safe   Restore curated portable system configuration
+  services      Restore saved systemd unit enablement/default target
   review        Compare saved system/service state without modifying it
   all           Run packages, dotfiles, vim, user, then review
                 (does NOT restore system configuration)
@@ -1092,6 +1610,10 @@ case "$ACTION" in
 
     system-safe)
         restore_system_safe
+        ;;
+
+    services)
+        restore_services
         ;;
 
     review)
