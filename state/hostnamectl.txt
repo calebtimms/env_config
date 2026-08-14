@@ -10,4 +10,3 @@ Operating System: Arch Linux
 Hardware Version: System Version
 Firmware Version: 1003
    Firmware Date: Fri 2025-01-17
-    Firmware Age: 1y 6month 3w 4d

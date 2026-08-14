@@ -10,6 +10,9 @@ EdgeBarrier=0
 [Effect-diminactive]
 Strength=10
 
+[Effect-overview]
+BorderActivate=9
+
 [Plugins]
 rememberwindowpositionsEnabled=true
 

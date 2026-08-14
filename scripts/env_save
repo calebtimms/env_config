@@ -283,7 +283,7 @@ uname -a > "$STATE/uname.txt"
 
 cat /proc/cmdline > "$STATE/kernel-cmdline.txt"
 
-hostnamectl | grep -vE '^[[:space:]]*(Machine ID|Boot ID):' > "$STATE/hostnamectl.txt" 2>&1 || true
+hostnamectl | grep -vE '^[[:space:]]*(Machine ID|Boot ID|Firmware Age):' > "$STATE/hostnamectl.txt" 2>&1 || true
 
 localectl status > "$STATE/localectl.txt" 2>&1 || true
 
