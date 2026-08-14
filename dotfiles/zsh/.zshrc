@@ -110,7 +110,8 @@ export FZF_DEFAULT_OPTS='
 
 ## Plugin Sourcing:
 
-# FZF - Explicitly don't source CTRL+T or CTRL+C commands because I over-write them later
+# FZF - Disable its built-in Ctrl+R, Ctrl+T, and Alt+C bindings.
+# Custom Ctrl+F, Ctrl+T, and Ctrl+G bindings are defined below.
 FZF_CTRL_R_COMMAND= \
 FZF_CTRL_T_COMMAND= \
 FZF_ALT_C_COMMAND= \
@@ -177,24 +178,29 @@ _fzf_switcher() {
 
         case "$pressed" in
             ctrl-f)
-                # Pressing the active picker key again closes it.
                 [[ "$mode" == history ]] && break
-
+        
                 mode=history
+                zle reset-prompt
+                zle -R
                 continue
                 ;;
-
+        
             ctrl-t)
                 [[ "$mode" == files ]] && break
-
+        
                 mode=files
+                zle reset-prompt
+                zle -R
                 continue
                 ;;
-
+        
             ctrl-g)
                 [[ "$mode" == directories ]] && break
-
+        
                 mode=directories
+                zle reset-prompt
+                zle -R
                 continue
                 ;;
         esac
@@ -232,7 +238,7 @@ _fzf_switcher() {
     # fzf temporarily takes over the terminal display.
     # Restore the prompt and whatever is currently in the ZLE buffer.
     zle reset-prompt
-    zle redisplay
+    zle -R
 }
 
 _fzf_history_switcher() {
