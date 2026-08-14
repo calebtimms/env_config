@@ -778,6 +778,217 @@ restore_services()
 }
 
 
+flatpak_remote_url()
+{
+    local scope="$1"
+    local remote="$2"
+
+    if [[ "$scope" == "system" ]]; then
+        flatpak remotes \
+            --system \
+            --columns=name,url \
+            2>/dev/null
+    else
+        flatpak remotes \
+            --user \
+            --columns=name,url \
+            2>/dev/null
+    fi \
+        | awk -F '\t' -v remote="$remote" '
+            $1 == remote {
+                print $2
+                exit
+            }
+        '
+}
+
+
+restore_flatpak_remotes()
+{
+    local manifest="$PACKAGES/flatpak-remotes.txt"
+
+    local scope
+    local remote
+    local url
+    local existing_url
+
+    [[ -f "$manifest" ]] || return 0
+
+    command -v flatpak >/dev/null 2>&1 || {
+        warn "Flatpak is not installed; skipping Flatpak remotes."
+        return
+    }
+
+    info "Restoring Flatpak remotes"
+
+    while IFS=$'\t' read -r scope remote url; do
+
+        [[ -n "$scope" ]] || continue
+        [[ -n "$remote" ]] || continue
+        [[ -n "$url" ]] || continue
+
+        existing_url="$(
+            flatpak_remote_url "$scope" "$remote"
+        )"
+
+        if [[ -n "$existing_url" ]]; then
+
+            if [[ "$existing_url" != "$url" ]]; then
+                warn "Flatpak remote $remote already exists with a different URL:"
+                warn "  current: $existing_url"
+                warn "  saved:   $url"
+            fi
+
+            continue
+        fi
+
+
+        echo "Adding $scope Flatpak remote: $remote"
+
+        if [[ "$scope" == "system" ]]; then
+
+            sudo flatpak remote-add \
+                --system \
+                --if-not-exists \
+                "$remote" \
+                "$url"
+
+        elif [[ "$scope" == "user" ]]; then
+
+            flatpak remote-add \
+                --user \
+                --if-not-exists \
+                "$remote" \
+                "$url"
+
+        else
+            warn "Unknown Flatpak scope '$scope' for remote $remote"
+        fi
+
+    done < "$manifest"
+}
+
+
+flatpak_app_installed()
+{
+    local scope="$1"
+    local app="$2"
+
+    if [[ "$scope" == "system" ]]; then
+        flatpak list \
+            --system \
+            --app \
+            --columns=application \
+            2>/dev/null
+    else
+        flatpak list \
+            --user \
+            --app \
+            --columns=application \
+            2>/dev/null
+    fi \
+        | grep -Fxq "$app"
+}
+
+
+install_flatpaks()
+{
+    local manifest="$PACKAGES/flatpak.txt"
+
+    local scope
+    local app
+    local remote
+
+    [[ -f "$manifest" ]] || return 0
+
+    if ! command -v flatpak >/dev/null 2>&1; then
+        warn "Flatpak is not installed; skipping Flatpak applications."
+        return
+    fi
+
+    restore_flatpak_remotes
+
+    info "Installing Flatpak applications"
+
+    while IFS=$'\t' read -r scope app remote; do
+
+        [[ -n "$scope" ]] || continue
+        [[ -n "$app" ]] || continue
+        [[ -n "$remote" ]] || continue
+
+        if flatpak_app_installed "$scope" "$app"; then
+            echo "$app already installed ($scope)"
+            continue
+        fi
+
+        echo "Installing $app ($scope from $remote)"
+
+        if [[ "$scope" == "system" ]]; then
+
+            if ! sudo flatpak install \
+                --system \
+                -y \
+                "$remote" \
+                "$app"
+            then
+                warn "Could not install Flatpak: $app"
+            fi
+
+        elif [[ "$scope" == "user" ]]; then
+
+            if ! flatpak install \
+                --user \
+                -y \
+                "$remote" \
+                "$app"
+            then
+                warn "Could not install Flatpak: $app"
+            fi
+
+        else
+            warn "Unknown Flatpak scope '$scope' for $app"
+        fi
+
+    done < "$manifest"
+}
+
+
+install_foreign_packages()
+{
+    local -a packages=()
+    local package
+
+    [[ -f "$PACKAGES/foreign.txt" ]] || return 0
+
+    bootstrap_yay || {
+        warn "Skipping foreign/AUR packages."
+        return
+    }
+
+    mapfile -t packages < <(
+        grep -Ev \
+            '^[[:space:]]*(#|$)|^yay$|^yay-bin$' \
+            "$PACKAGES/foreign.txt"
+    )
+
+    if (( ${#packages[@]} == 0 )); then
+        return
+    fi
+
+    info "Installing foreign / AUR packages"
+
+    for package in "${packages[@]}"; do
+
+        echo "$package"
+
+        if ! yay -S --needed "$package"; then
+            warn "Could not restore foreign package: $package"
+        fi
+
+    done
+}
+
+
 # ---------------------------------------------------------------------------
 # Packages
 # ---------------------------------------------------------------------------
@@ -810,9 +1021,16 @@ bootstrap_yay()
     local helper_pkg="yay"
     local tmp
 
-    command -v yay >/dev/null 2>&1 && return 0
+    # All Yay variants provide the executable named "yay".
+    if command -v yay >/dev/null 2>&1; then
+        return 0
+    fi
 
-    if grep -qx 'yay-bin' "$PACKAGES/foreign.txt" 2>/dev/null; then
+    # If Yay really is missing, recreate the same variant that was
+    # installed on the saved machine.
+    if grep -qx 'yay-git' "$PACKAGES/foreign.txt" 2>/dev/null; then
+        helper_pkg="yay-git"
+    elif grep -qx 'yay-bin' "$PACKAGES/foreign.txt" 2>/dev/null; then
         helper_pkg="yay-bin"
     elif grep -qx 'yay' "$PACKAGES/foreign.txt" 2>/dev/null; then
         helper_pkg="yay"
@@ -854,6 +1072,7 @@ bootstrap_yay()
 install_foreign_packages()
 {
     local -a packages=()
+    local package
 
     [[ -f "$PACKAGES/foreign.txt" ]] || return 0
 
@@ -864,7 +1083,7 @@ install_foreign_packages()
 
     mapfile -t packages < <(
         grep -Ev \
-            '^[[:space:]]*(#|$)|^yay$|^yay-bin$' \
+            '^[[:space:]]*(#|$)|^yay$|^yay-bin$|^yay-git$' \
             "$PACKAGES/foreign.txt"
     )
 
@@ -874,7 +1093,24 @@ install_foreign_packages()
 
     info "Installing foreign / AUR packages"
 
-    yay -S --needed "${packages[@]}"
+    for package in "${packages[@]}"; do
+
+        # makepkg/AUR builds can generate companion *-debug packages that
+        # are installed locally but are not independent AUR package entries.
+        # Reconstruct them through the package that produced them instead.
+        if [[ "$package" == *-debug ]]; then
+            echo "$package"
+            echo "  generated debug package; skipping direct AUR lookup"
+            continue
+        fi
+
+        echo "$package"
+
+        if ! yay -S --needed "$package"; then
+            warn "Could not restore foreign package: $package"
+        fi
+
+    done
 }
 
 
@@ -906,6 +1142,7 @@ install_packages()
 {
     install_official_packages
     install_foreign_packages
+    install_flatpaks
     install_code_extensions
 }
 

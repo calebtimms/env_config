@@ -236,11 +236,82 @@ capture_git_repo_inventory()
 pacman -Qqen | LC_ALL=C sort > "$PACKAGES/official.txt"
 pacman -Qqem | LC_ALL=C sort > "$PACKAGES/foreign.txt"
 
+# ---------------------------------------------------------------------------
 # Flatpak
+# ---------------------------------------------------------------------------
+
 if command -v flatpak >/dev/null 2>&1; then
-    flatpak list --app --columns=application | LC_ALL=C sort > "$PACKAGES/flatpak.txt"
+
+    # Installed applications:
+    #
+    #   scope<TAB>application<TAB>origin
+    #
+    # Keep user/system scope because Flatpak treats these as distinct
+    # installations.
+
+    {
+        flatpak list \
+            --system \
+            --app \
+            --columns=application,origin \
+            2>/dev/null \
+            | awk -F '\t' '
+                NF >= 2 {
+                    printf "system\t%s\t%s\n", $1, $2
+                }
+            ' \
+            || true
+
+        flatpak list \
+            --user \
+            --app \
+            --columns=application,origin \
+            2>/dev/null \
+            | awk -F '\t' '
+                NF >= 2 {
+                    printf "user\t%s\t%s\n", $1, $2
+                }
+            ' \
+            || true
+
+    } | LC_ALL=C sort -u \
+        > "$PACKAGES/flatpak.txt"
+
+
+    # Configured repositories:
+    #
+    #   scope<TAB>name<TAB>url
+
+    {
+        flatpak remotes \
+            --system \
+            --columns=name,url \
+            2>/dev/null \
+            | awk -F '\t' '
+                NF >= 2 {
+                    printf "system\t%s\t%s\n", $1, $2
+                }
+            ' \
+            || true
+
+        flatpak remotes \
+            --user \
+            --columns=name,url \
+            2>/dev/null \
+            | awk -F '\t' '
+                NF >= 2 {
+                    printf "user\t%s\t%s\n", $1, $2
+                }
+            ' \
+            || true
+
+    } | LC_ALL=C sort -u \
+        > "$PACKAGES/flatpak-remotes.txt"
+
 else
-    rm -f "$PACKAGES/flatpak.txt"
+    rm -f \
+        "$PACKAGES/flatpak.txt" \
+        "$PACKAGES/flatpak-remotes.txt"
 fi
 
 
