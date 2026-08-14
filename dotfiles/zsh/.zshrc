@@ -110,7 +110,7 @@ export FZF_DEFAULT_OPTS='
 
 ## Plugin Sourcing:
 
-# FZF - Disable its built-in Ctrl+R, Ctrl+T, and Alt+C bindings.
+# fzf - Disable its built-in Ctrl+R, Ctrl+T, and Alt+C bindings.
 # Custom Ctrl+F, Ctrl+T, and Ctrl+G bindings are defined below.
 FZF_CTRL_R_COMMAND= \
 FZF_CTRL_T_COMMAND= \
@@ -269,7 +269,11 @@ bindkey -M emacs '^G' _fzf_directory_switcher
 # Explicitly removing CTRL+R keybinding
 bindkey -M emacs -r '^R'
 
+
+# ---------------------------------------------------------------------------
 # System Aliases
+# ---------------------------------------------------------------------------
+
 alias ls='ls -AF --color=auto'
 alias ll='ls -lAF --color=auto'
 alias lt='ls -lAFt --color=auto'
@@ -281,6 +285,9 @@ alias e='grep -EHsiInr'
 alias ep='grep -EHsiIn'
 
 alias icat='kitten icat'
+
+# Use bat as the man-page pager
+export MANPAGER="bat -plman"
 
 # Vim Things
 export EDITOR='vim'
@@ -300,6 +307,8 @@ alias ob_fix='sed -i -e "s/'\''let g:this_session = v:this_session'\''/'\''g:thi
 # Shell Aliases
 alias sz='source ~/.zshrc'
 alias vimz='vim ~/.zshrc'
+
+alias dust='dust -r'
 
 # Code Project Aliases
 alias td='python ~/TradingDashboard/main.py &'
