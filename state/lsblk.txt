@@ -1,12 +1,12 @@
 arch_vg-root 3.6T lvm btrfs  archroot 22f7ed40-17cc-405d-8548-6030021d28c3 
-nvme0n1 1.9T disk     
-nvme0n1p1 100M part vfat FAT32  DCE3-60C6 2498983e-6908-43af-a94a-de17a29e6f55
-nvme0n1p2 16M part     8e981cdf-0cb4-4297-ab50-8647bf7e4bdd
-nvme0n1p3 1.9T part ntfs   369CE5FA9CE5B491 f1122752-2dba-4460-a8fd-d635a106eed1
-nvme0n1p4 797M part ntfs   62663CE9663CC019 fe58c2ec-0576-44f8-9223-90b9fadcae38
-nvme1n1 3.6T disk     
-nvme1n1p1 2G part vfat FAT32 ARCH_EFI 915D-8BC2 20378438-0451-43d2-9ce1-6cf8ce85a3a2
-nvme1n1p2 3.6T part LVM2_member LVM2\x20001  n1PcK8-iPBc-OGmt-q8SK-hgW6-JR8t-07kQzt ee38a4b7-9cb4-4b0a-ba9d-de2d833db45b
+nvme0n1 3.6T disk     
+nvme0n1p1 2G part vfat FAT32 ARCH_EFI 915D-8BC2 20378438-0451-43d2-9ce1-6cf8ce85a3a2
+nvme0n1p2 3.6T part LVM2_member LVM2\x20001  n1PcK8-iPBc-OGmt-q8SK-hgW6-JR8t-07kQzt ee38a4b7-9cb4-4b0a-ba9d-de2d833db45b
+nvme1n1 1.9T disk     
+nvme1n1p1 100M part vfat FAT32  DCE3-60C6 2498983e-6908-43af-a94a-de17a29e6f55
+nvme1n1p2 16M part     8e981cdf-0cb4-4297-ab50-8647bf7e4bdd
+nvme1n1p3 1.9T part ntfs   369CE5FA9CE5B491 f1122752-2dba-4460-a8fd-d635a106eed1
+nvme1n1p4 797M part ntfs   62663CE9663CC019 fe58c2ec-0576-44f8-9223-90b9fadcae38
 sda 476.9G disk     
 sda1 2G part vfat FAT32  C9A9-F260 2c4c4478-3836-431a-9e7d-c67adaa62967
 sda2 8G part ext4 1.0  eeabaa72-7205-4f97-a46a-5c3d7d2458b5 f056be3f-31fd-4528-8a71-6cc0e2944153

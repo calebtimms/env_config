@@ -2,6 +2,14 @@
 # ~/.zshrc
 #
 
+# If not running interactively, don't do anything
+[[ -o interactive ]] || return
+
+# Prompt Customization
+autoload -Uz colors && colors
+
+PROMPT='%B%F{cyan}%1~ %F{magenta}>%f%b '
+
 # Environment configuration utilities
 export PATH="$HOME/env_config/scripts:$PATH"
 
@@ -12,8 +20,6 @@ autoload -Uz compinit
 compinit
 # End of lines added by compinstall
 
-# Timmseh's Edits
-
 # Zsh Options
 unsetopt beep
 setopt autocd extendedglob nomatch notify
@@ -22,14 +28,11 @@ HISTFILE=~/.zsh_history
 HISTSIZE=1000000
 SAVEHIST=1000000
 
-setopt APPEND_HISTORY          # Append instead of overwrite
 setopt SHARE_HISTORY           # Share history across terminals
 setopt HIST_IGNORE_DUPS        # Ignore consecutive duplicates
-#setopt HIST_IGNORE_ALL_DUPS    # Remove older duplicate entries
-setopt HIST_FIND_NO_DUPS       # Ctrl-R skips duplicate matches
+setopt HIST_FIND_NO_DUPS       # Avoid duplicates in native ZLE history searches
 setopt HIST_REDUCE_BLANKS      # Collapse repeated spaces
 setopt HIST_VERIFY             # Expand !history but don't execute immediately
-setopt EXTENDED_HISTORY        # Save timestamps and durations
 
 setopt noautomenu
 setopt nomenucomplete
@@ -91,8 +94,6 @@ bindkey -M emacs '^[r' redo
 
 # Commands used to populate fzf
 export FZF_DEFAULT_COMMAND='fd --type f --hidden'
-export FZF_CTRL_T_COMMAND="$FZF_DEFAULT_COMMAND"
-export FZF_ALT_C_COMMAND='fd --type d --hidden'
 
 # General fzf behavior
 export FZF_DEFAULT_OPTS='
@@ -106,45 +107,17 @@ export FZF_DEFAULT_OPTS='
   --bind=ctrl-u:half-page-up
 '
 
-# Options for default command history search, actually bound to Ctrl+F below
-export FZF_CTRL_R_OPTS='
-  --prompt="History> "
-  --no-multi
-  --bind=ctrl-f:abort
-'
 
-export FZF_CTRL_T_OPTS='
-  --prompt="Files> "
-  --multi
-  --bind=ctrl-t:abort
-'
+## Plugin Sourcing:
 
-export FZF_ALT_C_OPTS='
-  --prompt="Directories> "
-  --preview "tree -C {} 2>/dev/null | head -200"
-  --preview-window=right:60%
-  --bind=ctrl-g:abort
-'
+# FZF - Explicitly don't source CTRL+T or CTRL+C commands because I over-write them later
+FZF_CTRL_R_COMMAND= \
+FZF_CTRL_T_COMMAND= \
+FZF_ALT_C_COMMAND= \
+source <(fzf --zsh)
 
-function zvm_after_init() {
-    source <(fzf --zsh)
-
-    bindkey -M viins '^F' _fzf_history_switcher
-    bindkey -M vicmd '^F' _fzf_history_switcher
-
-    bindkey -M viins '^T' _fzf_file_switcher
-    bindkey -M vicmd '^T' _fzf_file_switcher
-
-    bindkey -M viins '^G' _fzf_directory_switcher
-    bindkey -M vicmd '^G' _fzf_directory_switcher
-}
-
-# Plugin Sourcing:
+# Zoxide
 eval "$(zoxide init zsh --cmd cd)"
-
-# Force Ctrl-R to use fzf in vi insert and command modes
-bindkey -M viins '^F' fzf-history-widget
-bindkey -M vicmd '^F' fzf-history-widget
 
 # ---------------------------------------------------------------------------
 # Unified switchable fzf picker
@@ -163,9 +136,6 @@ _fzf_switcher() {
                         sed -E 's/^[[:space:]]*[0-9]+[[:space:]]+//' |
                         awk '!seen[$0]++' |
                         fzf \
-                            --height=60% \
-                            --layout=reverse \
-                            --border \
                             --prompt='History> ' \
                             --expect=ctrl-f,ctrl-t,ctrl-g
                 )
@@ -173,13 +143,10 @@ _fzf_switcher() {
 
             files)
                 result=$(
-                    fd --hidden \
+                    fd --type f --hidden \
                        --exclude .git \
                        --exclude .cache |
                         fzf \
-                            --height=60% \
-                            --layout=reverse \
-                            --border \
                             --multi \
                             --prompt='Files> ' \
                             --expect=ctrl-f,ctrl-t,ctrl-g
@@ -192,53 +159,59 @@ _fzf_switcher() {
                        --exclude .git \
                        --exclude .cache |
                         fzf \
-                            --height=60% \
-                            --layout=reverse \
-                            --border \
                             --prompt='Directories> ' \
                             --expect=ctrl-f,ctrl-t,ctrl-g
                 )
                 ;;
         esac
 
-        # Esc or Ctrl-C
-        [[ -z "$result" ]] && return
+        # Esc / Ctrl-C: leave the current command line untouched.
+        if [[ -z "$result" ]]; then
+            break
+        fi
 
-        # --expect always reserves the first output line for the pressed key.
+        # --expect reserves the first output line for the pressed key.
         lines=("${(@f)result}")
         pressed="${lines[1]}"
         selections=("${lines[@]:1}")
 
         case "$pressed" in
             ctrl-f)
-                [[ "$mode" == history ]] && return
+                # Pressing the active picker key again closes it.
+                [[ "$mode" == history ]] && break
+
                 mode=history
                 continue
                 ;;
 
             ctrl-t)
-                [[ "$mode" == files ]] && return
+                [[ "$mode" == files ]] && break
+
                 mode=files
                 continue
                 ;;
 
             ctrl-g)
-                [[ "$mode" == directories ]] && return
+                [[ "$mode" == directories ]] && break
+
                 mode=directories
                 continue
                 ;;
         esac
 
-        # Enter was pressed.
-        (( ${#selections} )) || return
+        # Enter was pressed without a selection.
+        (( ${#selections} )) || break
 
         case "$mode" in
             history)
+                # History search replaces the current command with
+                # the selected previous command.
                 BUFFER="${selections[1]}"
                 CURSOR=${#BUFFER}
                 ;;
 
             files)
+                # Insert selected path(s) exactly at the current cursor.
                 for file in "${selections[@]}"; do
                     LBUFFER+="${(q)file} "
                 done
@@ -246,15 +219,20 @@ _fzf_switcher() {
 
             directories)
                 selection="${selections[1]}"
-                [[ -n "$selection" ]] || return
+                [[ -n "$selection" ]] || break
 
                 builtin cd -- "$selection"
-                zle reset-prompt
                 ;;
+
         esac
 
-        return
+        break
     done
+
+    # fzf temporarily takes over the terminal display.
+    # Restore the prompt and whatever is currently in the ZLE buffer.
+    zle reset-prompt
+    zle redisplay
 }
 
 _fzf_history_switcher() {
@@ -273,52 +251,17 @@ zle -N _fzf_history_switcher
 zle -N _fzf_file_switcher
 zle -N _fzf_directory_switcher
 
-# ---------------------------------------------------------------------------
-# Vi command-mode movement matching ~/.vimrc
-# ---------------------------------------------------------------------------
+# ============================================================
+# fzf ZLE bindings
+# ============================================================
 
-# Your Vim config swaps j and k:
-#   j = up
-#   k = down
-bindkey -M vicmd 'j' up-history
-bindkey -M vicmd 'k' down-history
+# Custom unified switcher
+bindkey -M emacs '^F' _fzf_history_switcher
+bindkey -M emacs '^T' _fzf_file_switcher
+bindkey -M emacs '^G' _fzf_directory_switcher
 
-# Your Vim config:
-#   H = beginning of line
-#   L = end of line
-bindkey -M vicmd 'H' beginning-of-line
-bindkey -M vicmd 'L' end-of-line
-
-# Your Vim config:
-#   J = gg
-#   K = G
-#
-# For the shell, map these to oldest/newest available history entries.
-bindkey -M vicmd 'J' beginning-of-buffer-or-history
-bindkey -M vicmd 'K' end-of-buffer-or-history
-
-# Alt+h / Alt+l mirror your Vim word movement:
-#   Alt+h = previous word
-#   Alt+l = next word
-bindkey -M vicmd '^[h' vi-backward-word
-bindkey -M vicmd '^[l' vi-forward-word
-
-# Optional: Alt+j / Alt+k move through history.
-# Vim uses these for sentence movement, but command lines do not normally
-# contain a useful equivalent of Vim sentences.
-bindkey -M vicmd '^[j' down-history
-bindkey -M vicmd '^[k' up-history
-
-# If not running interactively, don't do anything
-[[ -o interactive ]] || return
-
-# Prompt Customization
-autoload -Uz colors && colors
-
-PROMPT='%B%F{cyan}%1~ %F{magenta}>%f%b '
-
-# Alternative prompt:
-# PROMPT='[%n@%m %1~]%# '
+# Explicitly removing CTRL+R keybinding
+bindkey -M emacs -r '^R'
 
 # System Aliases
 alias ls='ls -AF --color=auto'
@@ -393,7 +336,6 @@ update()
 
     return "$yay_rc"
 }
-#alias update='echo "--- Updating via PacMan ---\n"; sudo pacman -Syu; echo "\n--- Updating via Yay ---\n"; yay'
 
 # Package searching across official Arch repo and AUR
 search() {
@@ -441,5 +383,3 @@ diskcheck() {
     echo '=== PHYSICAL DISKS ==='
     lsblk -d -o NAME,SIZE,MODEL,SERIAL
 }
-
-# End of Timmseh's Edits
