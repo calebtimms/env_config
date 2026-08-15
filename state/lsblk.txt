@@ -17,3 +17,4 @@ sdc 0B disk
 sdd 0B disk     
 sde 5.5T disk     
 sde1 5.5T part ntfs  My\x20Passport F6E0C1E8E0C1AEE5 a7291531-d349-40bd-a918-c1d3477bdd66
+sdf 0B disk     

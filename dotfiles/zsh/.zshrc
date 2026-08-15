@@ -274,10 +274,19 @@ bindkey -M emacs -r '^R'
 # System Aliases
 # ---------------------------------------------------------------------------
 
-alias ls='ls -AF --color=auto'
-alias ll='ls -lAF --color=auto'
-alias lt='ls -lAFt --color=auto'
-alias lrt='ls -lAFrt --color=auto'
+alias ls='eza -a --icons=auto'
+alias ll='eza -la --icons=auto'
+alias lt='eza -la --icons=auto --sort=modified'
+alias ltr='eza -la --icons=auto --sort=modified --reverse'
+alias lg='eza -la --git --icons=auto'
+
+alias et='eza --tree --icons=auto'
+
+#alias ls='ls -AF --color=auto'
+#alias ll='ls -lAF --color=auto'
+#alias lt='ls -lAFt --color=auto'
+#alias lrt='ls -lAFrt --color=auto'
+
 alias tree='tree -a'
 
 alias grep='grep --color=auto'

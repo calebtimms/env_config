@@ -1,4 +1,5 @@
 amd-ucode
+atuin
 base
 base-devel
 bat
@@ -41,6 +42,7 @@ man-db
 mangohud
 mtools
 networkmanager
+nss-mdns
 ntfs-3g
 nvidia-open
 nvidia-open-lts
