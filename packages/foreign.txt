@@ -1,3 +1,6 @@
+lib32-giflib
+lib32-openal
+lib32-v4l-utils
 mediatek-mt7927-dkms
 yay-git
 yay-git-debug

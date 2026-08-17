@@ -1,7 +1,8 @@
 [Daemon]
+Autolock=false
 LockOnResume=false
 RequirePassword=false
-Timeout=60
+Timeout=0
 
 [Greeter]
 WallpaperPlugin=luisbocanegra.smart.video.wallpaper.reborn

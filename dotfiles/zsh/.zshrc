@@ -581,11 +581,24 @@ alias icat='kitten icat'
 alias vimk='vim ~/.config/kitty/kitty.conf'
 
 
-# -----------------------------------------------------------------------------
-# btop - System Monitor
-# -----------------------------------------------------------------------------
+# ============================================================
+# btop - Idle terminal "screensaver"
+# ============================================================
 
 alias monitor='btop'
+
+# Check idle state every 30 seconds
+TMOUT=15
+
+# Launch btop after 15 minutes
+BTOP_IDLE_TIMEOUT=900
+
+TRAPALRM() {
+    if (( TTYIDLE >= BTOP_IDLE_TIMEOUT )); then
+        [[ -o zle ]] && zle -I
+        btop
+    fi
+}
 
 
 # =============================================================================
