@@ -85,7 +85,7 @@ DialogWidth=810
 
 [Containments][2][Applets][5][Configuration][General]
 iconSpacing=0
-launchers=preferred://browser,applications:kitty.desktop,applications:sierra.desktop,applications:steam.desktop,applications:org.freecad.FreeCAD.desktop,applications:code-oss.desktop,applications:systemsettings.desktop
+launchers=preferred://browser,applications:kitty.desktop,applications:sierra.desktop,applications:discord.desktop,applications:steam.desktop,applications:org.freecad.FreeCAD.desktop,applications:code-oss.desktop,applications:systemsettings.desktop
 
 [Containments][2][Applets][6]
 immutability=1
