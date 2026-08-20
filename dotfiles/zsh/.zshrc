@@ -679,6 +679,7 @@ alias gm='git config pull.rebase false && git pull'
 alias gr='git config pull.rebase true && git pull'
 alias gdc='git diff'
 alias gdco='git diff > gitdiff_to_commit'
+alias gs='git status'
 
 _git_origin_ref() {
     local ref
