@@ -1,255 +1,286 @@
-#
-# ~/.zshrc
-#
+# ~/.zshrc — Arch workstation configuration
 
-# =============================================================================
-# Shell Initialization
-# =============================================================================
-
-# If not running interactively, don't do anything
 [[ -o interactive ]] || return
 
+# === Custom command registry ==================================================
 
-# =============================================================================
-# Environment
-# =============================================================================
+typeset -ga _CUSTOM_ORDER=()
+typeset -ga _CUSTOM_GROUP_ORDER=(Shell Files Search Editors Git Packages System Applications Tools)
+typeset -gA _CUSTOM_GROUP=() _CUSTOM_DESC=()
+typeset -gA _CUSTOM_GROUP_SEEN=(Shell 1 Files 1 Search 1 Editors 1 Git 1 Packages 1 System 1 Applications 1 Tools 1)
 
-# Environment configuration utilities
-export PATH="$HOME/env_config/scripts:$PATH"
+_custom_register() {
+    local group="$1" name desc
+    shift
 
+    if [[ -z ${_CUSTOM_GROUP_SEEN[$group]+x} ]]; then
+        _CUSTOM_GROUP_ORDER+=("$group")
+        _CUSTOM_GROUP_SEEN[$group]=1
+    fi
 
-# =============================================================================
-# Prompt
-# =============================================================================
+    while (( $# >= 2 )); do
+        name="$1"
+        desc="$2"
+        shift 2
 
-autoload -Uz colors && colors
-autoload -Uz vcs_info
-autoload -Uz add-zsh-hook
+        [[ -n ${_CUSTOM_DESC[$name]+x} ]] || _CUSTOM_ORDER+=("$name")
+        _CUSTOM_GROUP[$name]="$group"
+        _CUSTOM_DESC[$name]="$desc"
+    done
+}
 
+list_custom() {
+    local verbose=0 filter="" group name desc kind haystack
+    local printed=0
+    local -a matches
+
+    while (( $# )); do
+        case "$1" in
+            -v|-verbose|--verbose) verbose=1 ;;
+            -h|--help)
+                print 'Usage: list_custom [-v|--verbose] [filter]'
+                print 'Filter matches command name, category, or description.'
+                return 0
+                ;;
+            -*)
+                print -u2 "Unknown option: $1"
+                return 2
+                ;;
+            *)
+                [[ -z "$filter" ]] || {
+                    print -u2 'Only one filter may be supplied.'
+                    return 2
+                }
+                filter="$1"
+                ;;
+        esac
+        shift
+    done
+
+    for group in "${_CUSTOM_GROUP_ORDER[@]}"; do
+        matches=()
+
+        for name in "${_CUSTOM_ORDER[@]}"; do
+            [[ "${_CUSTOM_GROUP[$name]}" == "$group" ]] || continue
+            desc="${_CUSTOM_DESC[$name]}"
+
+            if [[ -n "$filter" ]]; then
+                haystack="$name $group $desc"
+                [[ "${(L)haystack}" == *"${(L)filter}"* ]] || continue
+            fi
+
+            matches+=("$name")
+        done
+
+        (( ${#matches} )) || continue
+
+        if (( verbose )); then
+            (( printed )) && print
+            print -P "%B${group}%b"
+            for name in "${matches[@]}"; do
+                kind="$(whence -w "$name" 2>/dev/null)"
+                kind="${kind##*: }"
+                printf '  %-18s %-9s %s\n' "$name" "${kind:-command}" "${_CUSTOM_DESC[$name]}"
+            done
+        else
+            print -r -- "${group}: ${(j: :)matches}"
+        fi
+
+        printed=1
+    done
+
+    (( printed )) || {
+        print -u2 "No custom commands matched: $filter"
+        return 1
+    }
+}
+
+_custom_register Shell \
+    list_custom 'List custom commands; use --verbose for descriptions.'
+
+# === PATH =====================================================================
+
+typeset -U path
+path_prepend() {
+    [[ -d "$1" ]] && path=("$1" $path)
+}
+
+path_prepend "$HOME/env_config/scripts"
+export PATH
+
+# === Prompt ===================================================================
+
+autoload -Uz vcs_info add-zsh-hook
 setopt prompt_subst
-
-# -----------------------------------------------------------------------------
-# Git Information
-# -----------------------------------------------------------------------------
 
 zstyle ':vcs_info:*' enable git
 zstyle ':vcs_info:git:*' check-for-changes true
-
-# + = staged changes
-# * = unstaged changes
 zstyle ':vcs_info:git:*' stagedstr '+'
 zstyle ':vcs_info:git:*' unstagedstr '*'
-
 zstyle ':vcs_info:git:*' formats '%F{yellow}[%b%c%u]%f '
 zstyle ':vcs_info:git:*' actionformats '%F{yellow}[%b|%a%c%u]%f '
-
 add-zsh-hook precmd vcs_info
 
-
-# -----------------------------------------------------------------------------
-# Main Prompt
-# -----------------------------------------------------------------------------
-
 PROMPT='%B%F{cyan}%1~%f%b ${vcs_info_msg_0_}%B%F{magenta}>%f%b '
-
-
-# -----------------------------------------------------------------------------
-# Right Prompt
-# -----------------------------------------------------------------------------
-
-# Only show a non-zero exit status
 RPROMPT='%(?..%F{red}exit %?%f) %(1j.%F{yellow}%j job(s)%f.)'
-
 PROMPT_EOL_MARK=''
 
-
-# =============================================================================
-# Core Zsh Behavior
-# =============================================================================
-
-# -----------------------------------------------------------------------------
-# General Options
-# -----------------------------------------------------------------------------
+# === Shell behavior / history =================================================
 
 unsetopt beep
-setopt autocd extendedglob nomatch notify
+setopt autocd extendedglob nomatch notify interactivecomments
+setopt typesetsilent auto_param_slash
 
-
-# -----------------------------------------------------------------------------
-# History
-# -----------------------------------------------------------------------------
-
-HISTFILE=~/.zsh_history
+HISTFILE="${HISTFILE:-$HOME/.zsh_history}"
 HISTSIZE=1000000
 SAVEHIST=1000000
+setopt APPEND_HISTORY SHARE_HISTORY HIST_IGNORE_DUPS HIST_FIND_NO_DUPS
+setopt HIST_REDUCE_BLANKS HIST_VERIFY EXTENDED_HISTORY
 
-setopt SHARE_HISTORY           # Share history across terminals
-setopt HIST_IGNORE_DUPS        # Ignore consecutive duplicates
-setopt HIST_FIND_NO_DUPS       # Avoid duplicates in native ZLE history searches
-setopt HIST_REDUCE_BLANKS      # Collapse repeated spaces
-setopt HIST_VERIFY             # Expand !history but don't execute immediately
+# === Completion ===============================================================
 
-
-# =============================================================================
-# Completion System
-# =============================================================================
-
-# The following lines were added by compinstall
-zstyle :compinstall filename '/home/Timmseh/.zshrc'
+typeset -g ZSH_COMPLETION_DIR="$HOME/.local/share/zsh/site-functions"
+mkdir -p "$ZSH_COMPLETION_DIR"
+fpath=("$ZSH_COMPLETION_DIR" $fpath)
 
 autoload -Uz compinit
-compinit
-# End of lines added by compinstall
+typeset -g _ZCOMPDUMP="${ZDOTDIR:-$HOME}/.zcompdump"
+typeset -a _zcomp_mtime
+typeset -i _zcomp_cached=0
 
-setopt noautomenu
-setopt nomenucomplete
-setopt list_ambiguous
+if [[ -f "$_ZCOMPDUMP" ]] &&
+   zmodload zsh/datetime 2>/dev/null &&
+   zmodload zsh/stat 2>/dev/null &&
+   zstat -A _zcomp_mtime +mtime "$_ZCOMPDUMP" 2>/dev/null &&
+   (( EPOCHSECONDS - _zcomp_mtime[1] < 86400 )); then
+    _zcomp_cached=1
+fi
 
-# Stop inserting tabs on blank lines
+if (( _zcomp_cached )); then
+    compinit -C -d "$_ZCOMPDUMP"
+else
+    compinit -d "$_ZCOMPDUMP"
+fi
+unset _zcomp_mtime _zcomp_cached
+
+unsetopt recexact automenu menucomplete completealiases
+setopt autolist list_ambiguous
+
+zstyle ':completion:*' accept-exact false
+zstyle ':completion:*' accept-exact-dirs false
 zstyle ':completion:*' insert-tab false
 
+# === Custom completions =======================================================
 
-# =============================================================================
-# ZLE / Command-Line Editing
-# =============================================================================
+_list_custom() {
+    local group name
+    local -a filters
+
+    for group in "${_CUSTOM_GROUP_ORDER[@]}"; do
+        filters+=("$group:command category")
+    done
+
+    for name in "${_CUSTOM_ORDER[@]}"; do
+        filters+=("$name:${_CUSTOM_DESC[$name]}")
+    done
+
+    _arguments \
+        '(-v -verbose --verbose)-v[show command descriptions]' \
+        '(-v -verbose --verbose)-verbose[show command descriptions]' \
+        '(-v -verbose --verbose)--verbose[show command descriptions]' \
+        '(-h --help)-h[show help]' \
+        '(-h --help)--help[show help]' \
+        '1:command or category:->filter'
+
+    case "$state" in
+        filter)
+            _describe 'command or category' filters
+            ;;
+    esac
+}
+
+compdef _list_custom list_custom
+
+_wineprefix() {
+    # wineprefix accepts exactly one prefix name.
+    (( CURRENT == 2 )) || return
+
+    local dir name
+    local -a prefixes
+
+    for dir in "$HOME"/.wine-*(N/); do
+        name="${dir:t}"
+        name="${name#.wine-}"
+        prefixes+=("$name:$dir")
+    done
+
+    if (( ${#prefixes} )); then
+        _describe 'Wine prefix' prefixes
+    else
+        _message 'no ~/.wine-* prefixes found'
+    fi
+}
+
+compdef _wineprefix wineprefix
+
+# === ZLE keybindings ===========================================================
 
 bindkey -e
-
-# Don't highlight pasted text
 zle_highlight+=(paste:none)
 
-
-# -----------------------------------------------------------------------------
-# Line Movement
-# -----------------------------------------------------------------------------
-
-# Like H / L in my Vim config
 bindkey -M emacs '^H' beginning-of-line
 bindkey -M emacs '^L' end-of-line
-
-
-# -----------------------------------------------------------------------------
-# Word Movement
-# -----------------------------------------------------------------------------
-
-# Like Alt+h / Alt+l in my Vim config
 bindkey -M emacs '^[h' vi-backward-word
 bindkey -M emacs '^[l' vi-forward-word
-
-
-# -----------------------------------------------------------------------------
-# Vertical / History Movement
-# -----------------------------------------------------------------------------
-
-# My Vim j/k are reversed:
-# j = up
-# k = down
 bindkey -M emacs '^[j' up-line-or-history
 bindkey -M emacs '^[k' down-line-or-history
-
-
-# -----------------------------------------------------------------------------
-# Beginning / End of History
-# -----------------------------------------------------------------------------
-
-# Similar idea to J = gg and K = G
 bindkey -M emacs '^[J' beginning-of-history
 bindkey -M emacs '^[K' end-of-history
-
-
-# -----------------------------------------------------------------------------
-# Editing
-# -----------------------------------------------------------------------------
-
-# Delete previous word
 bindkey -M emacs '^W' backward-kill-word
-
-# Delete from cursor back to beginning of line
 bindkey -M emacs '^U' backward-kill-line
-
-# Delete next word
 bindkey -M emacs '^[d' kill-word
-
-# Delete previous word
 bindkey -M emacs '^[x' backward-kill-word
-
-
-# -----------------------------------------------------------------------------
-# Undo / Redo
-# -----------------------------------------------------------------------------
-
 bindkey -M emacs '^[u' undo
 bindkey -M emacs '^[r' redo
 
+# === Modern tools =============================================================
 
-# =============================================================================
-# Plugin Configuration
-# =============================================================================
+if (( $+commands[fzf] )); then
+    export FZF_DEFAULT_OPTS='--height=60% --layout=reverse --border --cycle --bind=ctrl-k:down --bind=ctrl-j:up --bind=ctrl-d:half-page-down --bind=ctrl-u:half-page-up'
 
-# -----------------------------------------------------------------------------
-# fzf
-# -----------------------------------------------------------------------------
+    # Keep fzf completion, but reserve our custom history/file/directory bindings.
+    FZF_CTRL_R_COMMAND= \
+    FZF_CTRL_T_COMMAND= \
+    FZF_ALT_C_COMMAND= \
+    source <(fzf --zsh 2>/dev/null)
+fi
 
-# Commands used to populate fzf
-export FZF_DEFAULT_COMMAND='fd --type f --hidden'
+# Generic fzf invocations respect ignore files by default.
+(( $+commands[fd] )) && export FZF_DEFAULT_COMMAND='fd --type f --hidden --exclude .git --exclude .cache'
 
-# General fzf behavior
-export FZF_DEFAULT_OPTS='
-  --height=60%
-  --layout=reverse
-  --border
-  --cycle
-  --bind=ctrl-k:down
-  --bind=ctrl-j:up
-  --bind=ctrl-d:half-page-down
-  --bind=ctrl-u:half-page-up
-'
+# Preserve normal `cd` spelling while letting zoxide record navigation.
+(( $+commands[zoxide] )) && eval "$(zoxide init zsh --cmd cd)"
 
-# Disable fzf's built-in Ctrl+R, Ctrl+T, and Alt+C bindings.
-# Custom Ctrl+F, Ctrl+T, and Ctrl+G bindings are defined below.
-FZF_CTRL_R_COMMAND= \
-FZF_CTRL_T_COMMAND= \
-FZF_ALT_C_COMMAND= \
-source <(fzf --zsh)
+if (( $+commands[atuin] )); then
+    export ATUIN_NOBIND=true
+    eval "$(atuin init zsh)"
+fi
 
-
-# -----------------------------------------------------------------------------
-# Zoxide
-# -----------------------------------------------------------------------------
-
-eval "$(zoxide init zsh --cmd cd)"
-
-
-# -----------------------------------------------------------------------------
-# Atuin
-# -----------------------------------------------------------------------------
-
-# Let Atuin record rich history, but don't let it install any keybindings.
-export ATUIN_NOBIND="true"
-eval "$(atuin init zsh)"
-
-
-# =============================================================================
-# Custom fzf / ZLE Integration
-# =============================================================================
-
-# -----------------------------------------------------------------------------
-# Unified Switchable fzf Picker
-# -----------------------------------------------------------------------------
+# === fzf / Atuin picker ========================================================
 
 _atuin_history_rows() {
+    (( $+commands[atuin] )) || return 1
+
     atuin search "$@" \
         --human \
         --format $'{command}\x1f{relativetime}\x1f{exit}\x1f{duration}\x1f{directory}' |
         awk -F $'\x1f' -v OFS=$'\x1f' -v home="$HOME" '
             function shorten_dir(dir, width) {
-                # Replace $HOME with ~
                 if (dir == home)
                     dir = "~"
                 else if (index(dir, home "/") == 1)
                     dir = "~" substr(dir, length(home) + 1)
 
-                # Keep the useful tail of very long paths
                 if (length(dir) > width)
                     dir = "…" substr(dir, length(dir) - width + 2)
 
@@ -257,163 +288,246 @@ _atuin_history_rows() {
             }
 
             !seen[$1]++ {
-                command   = $1
-                age       = $2
-                code      = $3
-                duration  = $4
+                command = $1
+                age = $2
+                code = $3
+                duration = $4
                 directory = shorten_dir($5, 28)
 
-                # ANSI styling
-                reset      = "\033[0m"
-                dim        = "\033[90m"
-                cyan       = "\033[36m"
+                reset = "\033[0m"
+                dim = "\033[90m"
+                cyan = "\033[36m"
                 bold_white = "\033[1;37m"
 
-                # Build status before coloring so ANSI codes
-                # do not interfere with column alignment.
                 if (code == "0") {
                     status_plain = "✓"
                     status_color = "\033[32m"
-                }
-                else if (code == "-1" || code == "") {
+                } else if (code == "-1" || code == "") {
                     status_plain = "?"
                     status_color = "\033[90m"
-                }
-                else {
+                } else {
                     status_plain = "✗ " code
                     status_color = "\033[31m"
                 }
 
-                # Build fixed-width plain fields first
-                age_field       = sprintf("%-7s", age)
-                status_field    = sprintf("%-8s", status_plain)
-                duration_field  = sprintf("%-10s", duration)
-                directory_field = sprintf("%-28s", directory)
+                age_field = dim sprintf("%-7s", age) reset
+                status_field = status_color sprintf("%-8s", status_plain) reset
+                duration_field = dim sprintf("%-10s", duration) reset
+                directory_field = cyan sprintf("%-28s", directory) reset
+                command_field = bold_white command reset
 
-                # Apply color only after padding
-                age_field       = dim age_field reset
-                status_field    = status_color status_field reset
-                duration_field  = dim duration_field reset
-                directory_field = cyan directory_field reset
-                command_field   = bold_white command reset
-
-                display = age_field
-                display = display " │ " status_field
-                display = display " │ " duration_field
-                display = display " │ " directory_field
-                display = display " │ " command_field
-
+                display = age_field " │ " status_field " │ " duration_field
+                display = display " │ " directory_field " │ " command_field
                 print command, display
             }
         '
 }
 
 _fzf_switcher() {
-    local mode="$1"
-    local result pressed selection file
+    local mode="$1" result pressed selection file
+    local fd_bin fd_files fd_files_follow fd_files_ignored fd_files_follow_ignored
+    local fd_dirs fd_dirs_follow fd_dirs_ignored fd_dirs_follow_ignored
+    local file_preview dir_preview
     local -a lines selections
+
+    (( $+commands[fzf] )) || return 1
 
     while true; do
         case "$mode" in
             history)
+                (( $+commands[atuin] )) || return 1
                 result=$(
                     _atuin_history_rows |
-                        fzf \
-                            --tac \
-                            --ansi \
-                            --scheme=history \
-                            --delimiter=$'\x1f' \
-                            --with-nth=2 \
-                            --accept-nth=1 \
-                            --header="$(printf '%-7s │ %-8s │ %-10s │ %-28s │ %s' \
-                                AGE STATUS DURATION DIRECTORY COMMAND)" \
+                        fzf --tac --ansi --scheme=history \
+                            --delimiter=$'\x1f' --with-nth=2 --accept-nth=1 \
+                            --header="$(printf '%-7s │ %-8s │ %-10s │ %-28s │ %s' AGE STATUS DURATION DIRECTORY COMMAND)" \
                             --prompt='History> ' \
                             --expect=ctrl-f,ctrl-r,ctrl-t,ctrl-g
                 )
                 ;;
-            
+
             directory_history)
+                (( $+commands[atuin] )) || return 1
                 result=$(
                     _atuin_history_rows --cwd . |
-                        fzf \
-                            --tac \
-                            --ansi \
-                            --scheme=history \
-                            --delimiter=$'\x1f' \
-                            --with-nth=2 \
-                            --accept-nth=1 \
-                            --header="$(printf '%-7s │ %-8s │ %-10s │ %-28s │ %s' \
-                                AGE STATUS DURATION DIRECTORY COMMAND)" \
+                        fzf --tac --ansi --scheme=history \
+                            --delimiter=$'\x1f' --with-nth=2 --accept-nth=1 \
+                            --header="$(printf '%-7s │ %-8s │ %-10s │ %-28s │ %s' AGE STATUS DURATION DIRECTORY COMMAND)" \
                             --prompt='Directory History> ' \
                             --expect=ctrl-f,ctrl-r,ctrl-t,ctrl-g
                 )
                 ;;
 
             files)
+                (( $+commands[fd] )) || return 1
+                fd_bin="${commands[fd]}"
+
+                # Default: hidden files included, ignore rules respected, no symlink traversal.
+                fd_files="$fd_bin --type f --hidden --exclude .git --exclude .cache"
+                fd_files_follow="$fd_files --follow"
+                fd_files_ignored="$fd_files --no-ignore"
+                fd_files_follow_ignored="$fd_files --follow --no-ignore"
+
+                if (( $+commands[bat] )); then
+                    file_preview="${commands[bat]} --color=always --style=numbers -- {} 2>/dev/null"
+                else
+                    file_preview="sed -n '1,250p' -- {} 2>/dev/null"
+                fi
+
                 result=$(
-                    fd --type f --hidden \
-                       --exclude .git \
-                       --exclude .cache |
-                        fzf \
-                            --multi \
+                    FZF_DEFAULT_COMMAND="$fd_files" \
+                        fzf --multi --scheme=path \
                             --prompt='Files> ' \
-                            --expect=ctrl-f,ctrl-r,ctrl-t,ctrl-g
+                            --header='Ctrl+L: links  Ctrl+O: ignored  Ctrl+P: preview' \
+                            --preview="$file_preview" \
+                            --preview-window='right:50%:hidden' \
+                            --bind 'ctrl-p:toggle-preview' \
+                            --bind 'alt-k:preview-down' \
+                            --bind 'alt-j:preview-up' \
+                            --bind 'alt-d:preview-half-page-down' \
+                            --bind 'alt-u:preview-half-page-up' \
+                            --bind 'alt-h:preview-top' \
+                            --bind 'alt-g:preview-bottom' \
+                            --bind "ctrl-l:transform:
+                                case \"\$FZF_PROMPT\" in
+                                    'Files> ')
+                                        echo 'change-prompt(Files+Links> )+reload($fd_files_follow)'
+                                        ;;
+                                    'Files+Links> ')
+                                        echo 'change-prompt(Files> )+reload($fd_files)'
+                                        ;;
+                                    'Files+Ignored> ')
+                                        echo 'change-prompt(Files+Links+Ignored> )+reload($fd_files_follow_ignored)'
+                                        ;;
+                                    'Files+Links+Ignored> ')
+                                        echo 'change-prompt(Files+Ignored> )+reload($fd_files_ignored)'
+                                        ;;
+                                esac
+                            " \
+                            --bind "ctrl-o:transform:
+                                case \"\$FZF_PROMPT\" in
+                                    'Files> ')
+                                        echo 'change-prompt(Files+Ignored> )+reload($fd_files_ignored)'
+                                        ;;
+                                    'Files+Ignored> ')
+                                        echo 'change-prompt(Files> )+reload($fd_files)'
+                                        ;;
+                                    'Files+Links> ')
+                                        echo 'change-prompt(Files+Links+Ignored> )+reload($fd_files_follow_ignored)'
+                                        ;;
+                                    'Files+Links+Ignored> ')
+                                        echo 'change-prompt(Files+Links> )+reload($fd_files_follow)'
+                                        ;;
+                                esac
+                            " \
+                            --expect=ctrl-f,ctrl-r,ctrl-t,ctrl-g \
+                            < /dev/tty
                 )
                 ;;
 
             directories)
+                (( $+commands[fd] )) || return 1
+                fd_bin="${commands[fd]}"
+
+                fd_dirs="$fd_bin --type d --hidden --exclude .git --exclude .cache"
+                fd_dirs_follow="$fd_dirs --follow"
+                fd_dirs_ignored="$fd_dirs --no-ignore"
+                fd_dirs_follow_ignored="$fd_dirs --follow --no-ignore"
+
+                if (( $+commands[eza] )); then
+                    dir_preview="${commands[eza]} --tree --level=2 --icons=auto --color=always -- {} 2>/dev/null"
+                elif (( $+commands[tree] )); then
+                    dir_preview="${commands[tree]} -a -L 2 {} 2>/dev/null"
+                else
+                    dir_preview="find {} -maxdepth 2 -print 2>/dev/null | head -200"
+                fi
+
                 result=$(
-                    fd --type d --hidden \
-                       --exclude .git \
-                       --exclude .cache |
-                        fzf \
+                    FZF_DEFAULT_COMMAND="$fd_dirs" \
+                        fzf --scheme=path \
                             --prompt='Directories> ' \
-                            --expect=ctrl-f,ctrl-r,ctrl-t,ctrl-g
+                            --header='Ctrl+L: links  Ctrl+O: ignored  Ctrl+P: preview' \
+                            --preview="$dir_preview" \
+                            --preview-window='right:50%:hidden' \
+                            --bind 'ctrl-p:toggle-preview' \
+                            --bind 'alt-k:preview-down' \
+                            --bind 'alt-j:preview-up' \
+                            --bind 'alt-d:preview-half-page-down' \
+                            --bind 'alt-u:preview-half-page-up' \
+                            --bind 'alt-h:preview-top' \
+                            --bind 'alt-g:preview-bottom' \
+                            --bind "ctrl-l:transform:
+                                case \"\$FZF_PROMPT\" in
+                                    'Directories> ')
+                                        echo 'change-prompt(Directories+Links> )+reload($fd_dirs_follow)'
+                                        ;;
+                                    'Directories+Links> ')
+                                        echo 'change-prompt(Directories> )+reload($fd_dirs)'
+                                        ;;
+                                    'Directories+Ignored> ')
+                                        echo 'change-prompt(Directories+Links+Ignored> )+reload($fd_dirs_follow_ignored)'
+                                        ;;
+                                    'Directories+Links+Ignored> ')
+                                        echo 'change-prompt(Directories+Ignored> )+reload($fd_dirs_ignored)'
+                                        ;;
+                                esac
+                            " \
+                            --bind "ctrl-o:transform:
+                                case \"\$FZF_PROMPT\" in
+                                    'Directories> ')
+                                        echo 'change-prompt(Directories+Ignored> )+reload($fd_dirs_ignored)'
+                                        ;;
+                                    'Directories+Ignored> ')
+                                        echo 'change-prompt(Directories> )+reload($fd_dirs)'
+                                        ;;
+                                    'Directories+Links> ')
+                                        echo 'change-prompt(Directories+Links+Ignored> )+reload($fd_dirs_follow_ignored)'
+                                        ;;
+                                    'Directories+Links+Ignored> ')
+                                        echo 'change-prompt(Directories+Links> )+reload($fd_dirs_follow)'
+                                        ;;
+                                esac
+                            " \
+                            --expect=ctrl-f,ctrl-r,ctrl-t,ctrl-g \
+                            < /dev/tty
                 )
                 ;;
         esac
 
-        # Esc / Ctrl-C: leave the current command line untouched.
-        if [[ -z "$result" ]]; then
-            break
-        fi
+        [[ -n "$result" ]] || break
 
-        # --expect reserves the first output line for the pressed key.
         lines=("${(@f)result}")
         pressed="${lines[1]}"
         selections=("${lines[@]:1}")
 
         case "$pressed" in
             ctrl-f)
+                (( $+commands[atuin] )) || continue
                 [[ "$mode" == history ]] && break
-        
                 mode=history
                 zle reset-prompt
                 zle -R
                 continue
                 ;;
-        
             ctrl-r)
+                (( $+commands[atuin] )) || continue
                 [[ "$mode" == directory_history ]] && break
-        
                 mode=directory_history
                 zle reset-prompt
                 zle -R
                 continue
                 ;;
-        
             ctrl-t)
+                (( $+commands[fd] )) || continue
                 [[ "$mode" == files ]] && break
-        
                 mode=files
                 zle reset-prompt
                 zle -R
                 continue
                 ;;
-        
             ctrl-g)
+                (( $+commands[fd] )) || continue
                 [[ "$mode" == directories ]] && break
-        
                 mode=directories
                 zle reset-prompt
                 zle -R
@@ -421,125 +535,242 @@ _fzf_switcher() {
                 ;;
         esac
 
-        # Enter was pressed without a selection.
         (( ${#selections} )) || break
 
         case "$mode" in
             history|directory_history)
-                # History search replaces the current command with
-                # the selected previous command.
                 BUFFER="${selections[1]}"
                 CURSOR=${#BUFFER}
                 ;;
-        
             files)
-                # Insert selected path(s) exactly at the current cursor.
                 for file in "${selections[@]}"; do
                     LBUFFER+="${(q)file} "
                 done
                 ;;
-        
             directories)
                 selection="${selections[1]}"
                 [[ -n "$selection" ]] || break
-        
-                builtin cd -- "$selection"
+                cd "$selection"
                 ;;
         esac
 
         break
     done
 
-    # fzf temporarily takes over the terminal display.
-    # Restore the prompt and whatever is currently in the ZLE buffer.
     zle reset-prompt
     zle -R
 }
 
-
-# -----------------------------------------------------------------------------
-# fzf ZLE Widgets
-# -----------------------------------------------------------------------------
-
-_fzf_history_switcher() {
-    _fzf_switcher history
-}
-
-_fzf_directory_history_switcher() {
-    _fzf_switcher directory_history
-}
-
-_fzf_file_switcher() {
-    _fzf_switcher files
-}
-
-_fzf_directory_switcher() {
-    _fzf_switcher directories
-}
+_fzf_history_switcher() { _fzf_switcher history; }
+_fzf_directory_history_switcher() { _fzf_switcher directory_history; }
+_fzf_file_switcher() { _fzf_switcher files; }
+_fzf_directory_switcher() { _fzf_switcher directories; }
 
 zle -N _fzf_history_switcher
 zle -N _fzf_directory_history_switcher
 zle -N _fzf_file_switcher
 zle -N _fzf_directory_switcher
 
+if (( $+commands[fzf] && $+commands[atuin] )); then
+    bindkey -M emacs '^F' _fzf_history_switcher
+    bindkey -M emacs '^R' _fzf_directory_history_switcher
+fi
 
-# -----------------------------------------------------------------------------
-# fzf ZLE Bindings
-# -----------------------------------------------------------------------------
+if (( $+commands[fzf] && $+commands[fd] )); then
+    bindkey -M emacs '^T' _fzf_file_switcher
+    bindkey -M emacs '^G' _fzf_directory_switcher
+fi
 
-# Custom unified switcher
-bindkey -M emacs '^F' _fzf_history_switcher
-bindkey -M emacs '^R' _fzf_directory_history_switcher
-bindkey -M emacs '^T' _fzf_file_switcher
-bindkey -M emacs '^G' _fzf_directory_switcher
+# === Modern Unix tools / listings ============================================
 
+if (( $+commands[eza] )); then
+    alias ls='eza -a --icons=auto'
+    alias ll='eza -la --icons=auto'
+    alias lt='eza -la --icons=auto --sort=modified'
+    alias ltr='eza -la --icons=auto --sort=modified --reverse'
+    alias lg='eza -la --git --icons=auto'
+    alias et='eza --tree --icons=auto'
+else
+    alias ls='command ls -AF --color=auto'
+    alias ll='command ls -lAF --color=auto'
+    alias lt='command ls -lAFt --color=auto'
+    alias ltr='command ls -lAFrt --color=auto'
+fi
 
-# =============================================================================
-# Interactive Command Utilities
-# =============================================================================
+_custom_register Files \
+    ls 'List all files using eza when available.' \
+    ll 'Long file listing including hidden entries.' \
+    lt 'Long listing sorted newest first.' \
+    ltr 'Long listing sorted oldest first.'
 
-# -----------------------------------------------------------------------------
-# Modern Unix Tools / File Listings
-# -----------------------------------------------------------------------------
+if (( $+commands[eza] )); then
+    _custom_register Files \
+        lg 'Long eza listing with Git status.' \
+        et 'Show an eza directory tree.'
+fi
 
-alias ls='eza -a --icons=auto'
-alias ll='eza -la --icons=auto'
-alias lt='eza -la --icons=auto --sort=modified'
-alias ltr='eza -la --icons=auto --sort=modified --reverse'
-alias lg='eza -la --git --icons=auto'
+if (( $+commands[tree] )); then
+    alias tree='tree -a'
+    _custom_register Files tree 'Show directory trees including hidden entries.'
+fi
 
-alias et='eza --tree --icons=auto'
+if (( $+commands[dust] )); then
+    alias dust='dust -r'
+    _custom_register Files dust 'Show disk usage in reverse size order.'
+fi
 
-# Previous coreutils ls configuration
-#alias ls='ls -AF --color=auto'
-#alias ll='ls -lAF --color=auto'
-#alias lt='ls -lAFt --color=auto'
-#alias lrt='ls -lAFrt --color=auto'
-
-alias tree='tree -a'
-
-alias dust='dust -r'
-
-# Use bat as the man-page pager
-export MANPAGER="bat -plman"
-
-
-# -----------------------------------------------------------------------------
-# Search / Grep
-# -----------------------------------------------------------------------------
+# === Search helpers ===========================================================
 
 alias grep='grep --color=auto'
-alias e='grep -EHsiInr'
-alias ep='grep -EHsiIn'
 
+_grep_pretty() {
+    perl -pe '
+        my $ansi = qr/\e\[[0-9;]*[A-Za-z]/;
+        s/\0/ : /;
+        s/( : (?:$ansi)*[0-9]+(?:$ansi)*):/$1 : /;
+    '
+}
 
-# =============================================================================
-# Editors
-# =============================================================================
+e() { grep -Z -EHsiInr --color=always "$@" | _grep_pretty; }
+ep() { grep -Z -EHsiIn --color=always "$@" | _grep_pretty; }
+z() { zgrep -HsiIn --color=always "$@" | _grep_pretty; }
 
-# -----------------------------------------------------------------------------
-# Vim
-# -----------------------------------------------------------------------------
+hs() {
+    (( $# )) || {
+        print 'Usage: hs <history-search-pattern>'
+        return 1
+    }
+    fc -l 1 | grep -EHiIn --color=auto -- "$*"
+}
+
+fdir() {
+    (( $# )) || {
+        print 'Usage: fdir <directory-name-pattern>'
+        return 1
+    }
+    find . -type d -iname "*$1*"
+}
+
+ff() {
+    (( $# )) || {
+        print 'Usage: ff <file-name-pattern>'
+        return 1
+    }
+    find . -type f -iname "*$1*"
+}
+
+_custom_register Search \
+    grep 'Run GNU grep with automatic color.' \
+    e 'Recursive case-insensitive grep with formatted file/line output.' \
+    ep 'Search explicitly supplied files with formatted grep output.' \
+    z 'Search compressed files with formatted zgrep output.' \
+    hs 'Search shell history with a regular expression.' \
+    fdir 'Find directories by case-insensitive name substring.' \
+    ff 'Find files by case-insensitive name substring.'
+
+# === Git helpers ==============================================================
+
+gg() {
+    git grep -in --color=always "$@" | sed -e 's/:/ : /1' -e 's/:/ : /2'
+}
+
+alias gf='git ls-files | rg'
+alias gm='git config pull.rebase false && git pull'
+alias gr='git config pull.rebase true && git pull'
+alias gdc='git diff'
+alias gdco='git diff > gitdiff_to_commit'
+
+_git_origin_ref() {
+    local ref
+
+    ref="$(git symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null)" && {
+        print -r -- "$ref"
+        return 0
+    }
+
+    if git rev-parse --verify --quiet origin/main >/dev/null; then
+        print -r -- origin/main
+    elif git rev-parse --verify --quiet origin/master >/dev/null; then
+        print -r -- origin/master
+    elif git rev-parse --verify --quiet origin >/dev/null; then
+        print -r -- origin
+    else
+        print -u2 'No origin remote-tracking reference found.'
+        return 1
+    fi
+}
+
+gdo() {
+    local ref
+    ref="$(_git_origin_ref)" || return
+    git diff "$ref" "$@"
+}
+
+gdoo() {
+    local output_file='./gitdiff_to_origin' ref
+
+    if [[ $# -gt 0 && "$1" != '--' ]]; then
+        output_file="$1"
+        shift
+    elif [[ "$1" == '--' ]]; then
+        shift
+    fi
+
+    ref="$(_git_origin_ref)" || return
+
+    git diff "$ref" "$@" | awk '
+        BEGIN { first_file = 1 }
+        /^diff --git / {
+            if (!first_file) print ""
+            first_file = 0
+            hunk = 0
+            path = $3
+            sub(/^[abcw]\//, "", path)
+            print "diff " path
+            next
+        }
+        /^index /         { next }
+        /^new file mode / { next }
+        /^--- /           { next }
+        /^\+\+\+ /        { next }
+        /^@@ / {
+            hunk++
+            print "@ Hunk " hunk " @"
+            next
+        }
+        { print }
+    ' > "$output_file"
+}
+
+typeset -g _glog_format='%C(red)%H%C(reset) - %C(green)(%ar)%C(reset) %C(white)%s%C(reset) %C(bold italic white)- %an%C(reset)%C(auto)%d%C(reset)'
+
+glog() {
+    git log --graph --decorate --format=format:"$_glog_format" --all "$@"
+}
+
+glogf() {
+    git log --graph --decorate --format=format:"$_glog_format" --all --name-only "$@"
+}
+
+typeset -g DEFAULT_CLONE_REPO="${DEFAULT_CLONE_REPO:-/nfs/site/disks/ttl.git.zsc10.001/ttlh78/hub-ttlh78-a0}"
+clone() {
+    git clone "$DEFAULT_CLONE_REPO" "$@"
+}
+
+_custom_register Git \
+    gg 'Search tracked Git content with formatted output.' \
+    gf 'Search tracked Git filenames with ripgrep.' \
+    gm 'Set pull to merge for this repo, then pull.' \
+    gr 'Set pull to rebase for this repo, then pull.' \
+    gdc 'Show the working-tree Git diff.' \
+    gdco 'Write the working-tree diff to gitdiff_to_commit.' \
+    gdo 'Show a diff against the origin default branch.' \
+    gdoo 'Write a simplified diff against the origin default branch.' \
+    glog 'Show decorated graph history for all refs.' \
+    glogf 'Show graph history plus changed filenames.' \
+    clone 'Clone the configured default work repository.'
+
+# === Editors / shell configuration ===========================================
 
 export EDITOR='vim'
 export SUDO_EDITOR='vim'
@@ -551,189 +782,190 @@ alias gl='gvim -S'
 alias vimv='vim ~/.vimrc'
 alias gvimv='gvim ~/.vimrc'
 alias sv='sudoedit'
-
-
-# -----------------------------------------------------------------------------
-# Vim Plugin Maintenance
-# -----------------------------------------------------------------------------
-
 alias ob_fix='sed -i -e "s/'\''let g:this_session = v:this_session'\''/'\''g:this_session = v:this_session'\''/" -e "s/'\''let g:this_obsession = v:this_session'\''/'\''g:this_obsession = v:this_session'\''/" ~/.vim/pack/plugins/start/obsession/plugin/obsession.vim'
 
-
-# =============================================================================
-# Shell / Terminal Configuration
-# =============================================================================
-
-# -----------------------------------------------------------------------------
-# Zsh Configuration
-# -----------------------------------------------------------------------------
+_custom_register Editors \
+    v 'Open terminal Vim.' \
+    g 'Open GVim.' \
+    vl 'Open a saved Vim session.' \
+    gl 'Open a saved GVim session.' \
+    vimv 'Edit ~/.vimrc in Vim.' \
+    gvimv 'Edit ~/.vimrc in GVim.' \
+    sv 'Edit a privileged file through sudoedit.' \
+    ob_fix 'Patch Vim Obsession for the installed Vim version.'
 
 alias sz='source ~/.zshrc'
 alias vimz='vim ~/.zshrc'
 alias type='type -a'
 
+_custom_register Shell \
+    sz 'Reload ~/.zshrc in the current shell.' \
+    vimz 'Edit ~/.zshrc in Vim.' \
+    type 'Show all resolutions for a command name.'
 
-# -----------------------------------------------------------------------------
-# Kitty
-# -----------------------------------------------------------------------------
+if (( $+commands[kitten] )); then
+    alias icat='kitten icat'
+    _custom_register Tools icat 'Display an image in Kitty.'
+fi
 
-alias icat='kitten icat'
-alias vimk='vim ~/.config/kitty/kitty.conf'
-
-
-# ============================================================
-# btop - Idle terminal "screensaver"
-# ============================================================
-
-alias monitor='btop'
-
-# Check idle state every 30 seconds
-TMOUT=15
-
-# Launch btop after 15 minutes
-BTOP_IDLE_TIMEOUT=900
-
-TRAPALRM() {
-    if (( TTYIDLE >= BTOP_IDLE_TIMEOUT )); then
-        [[ -o zle ]] && zle -I
-        btop
-    fi
+[[ -f "$HOME/.config/kitty/kitty.conf" ]] && {
+    alias vimk='vim ~/.config/kitty/kitty.conf'
+    _custom_register Tools vimk 'Edit the Kitty configuration.'
 }
 
+if (( $+commands[btop] )); then
+    alias monitor='btop'
+    _custom_register Tools monitor 'Open btop system monitoring.'
+fi
 
-# =============================================================================
-# Package Management
-# =============================================================================
+if (( $+commands[bat] )); then
+    export MANPAGER="sh -c 'col -bx | bat -l man -p'"
+fi
 
-# -----------------------------------------------------------------------------
-# Pacman
-# -----------------------------------------------------------------------------
+# === Package management =======================================================
 
 alias pi='sudo pacman -S'
 alias pr='sudo pacman -Rsu'
 alias ps='pacman -Ss'
 alias pu='sudo pacman -Syu'
-
-
-# -----------------------------------------------------------------------------
-# Yay / AUR
-# -----------------------------------------------------------------------------
-
-alias yi='yay -S'
-alias ys='yay -Ss'
-alias yu='yay'
-
-
-# -----------------------------------------------------------------------------
-# Package Lists
-# -----------------------------------------------------------------------------
-
-# Package list (for all explicitly installed packages)
 alias pl='pacman -Qqen'
-alias yl='pacman -Qqem'
 
+_custom_register Packages \
+    pi 'Install packages with pacman.' \
+    pr 'Remove packages and unneeded dependencies with pacman.' \
+    ps 'Search official Arch repositories.' \
+    pu 'Upgrade installed repository packages.' \
+    pl 'List explicitly installed repository packages.'
 
-# -----------------------------------------------------------------------------
-# Full System Update
-# -----------------------------------------------------------------------------
+if (( $+commands[yay] )); then
+    alias yi='yay -S'
+    alias ys='yay -Ss'
+    alias yu='yay'
+    alias yl='pacman -Qqem'
 
-# Full system update via Pacman and Yay
-update()
-{
-    echo "\n--- Updating via PacMan ---\n"
+    _custom_register Packages \
+        yi 'Install a package through yay.' \
+        ys 'Search repositories and the AUR through yay.' \
+        yu 'Run yay with no preset arguments.' \
+        yl 'List explicitly installed foreign/AUR packages.'
+fi
+
+update() {
+    printf '\n--- Updating via Pacman ---\n\n'
 
     if ! sudo pacman -Syu; then
-        echo "\n--- PacMan update failed; skipping Yay ---\n"
+        printf '\n--- Pacman update failed; stopping ---\n\n'
         return 1
     fi
 
-    echo "\n--- Updating via Yay ---\n"
+    local yay_rc=0
+    if (( $+commands[yay] )); then
+        printf '\n--- Updating via Yay ---\n\n'
+        yay
+        yay_rc=$?
+    fi
 
-    yay
-    local yay_rc=$?
+    if (( $+commands[env_save] )); then
+        printf '\n--- Saving Environment State ---\n\n'
+        env_save
+    fi
 
-    echo "\n--- Saving Environment State ---\n"
-
-    env_save
+    printf '\n--- Refreshing Shell Completions ---\n\n'
+    completion_refresh
 
     return "$yay_rc"
 }
 
+completion_refresh() {
+    rehash
+    rm -f "$_ZCOMPDUMP" "${_ZCOMPDUMP}.zwc"
+    compinit -d "$_ZCOMPDUMP"
+}
 
-# -----------------------------------------------------------------------------
-# Package Search
-# -----------------------------------------------------------------------------
+_custom_register Shell \
+    completion_refresh 'Rebuild Zsh command and completion caches.'
 
-# Package searching across official Arch repo and AUR
 search() {
-    echo "--- From PacMan ---"
+    print '--- From Pacman ---'
     pacman -Ss "$@"
 
-    echo
-    echo "--- From AUR ---"
-    yay -Ss "$@"
+    if (( $+commands[yay] )); then
+        print
+        print '--- From AUR ---'
+        yay -Ss "$@"
+    fi
 }
 
+_custom_register Packages \
+    update 'Upgrade the system with pacman/yay, then run env_save if available.' \
+    search 'Search official Arch repositories and the AUR when yay is available.'
 
-# =============================================================================
-# System Administration
-# =============================================================================
-
-# -----------------------------------------------------------------------------
-# Wine
-# -----------------------------------------------------------------------------
+# === System administration ====================================================
 
 wineprefix() {
-    if (( $# != 1 )); then
-        echo "Usage: wineprefix <name>"
+    (( $# == 1 )) || {
+        print 'Usage: wineprefix <name>'
         return 1
-    fi
+    }
 
     export WINEPREFIX="$HOME/.wine-$1"
-    echo "Using Wine prefix: $WINEPREFIX"
+    print -r -- "Using Wine prefix: $WINEPREFIX"
 }
-
-
-# -----------------------------------------------------------------------------
-# Filesystems / Mounts
-# -----------------------------------------------------------------------------
 
 alias mount_windows='sudo mount -t ntfs-3g UUID=369CE5FA9CE5B491 /mnt/windows'
 alias unmount_windows='sudo umount /mnt/windows'
 
-
-# -----------------------------------------------------------------------------
-# Disk / LVM Inspection
-# -----------------------------------------------------------------------------
-
 diskcheck() {
-    echo '=== ROOT ==='
+    print '=== ROOT ==='
     findmnt /
 
-    echo
-    echo '=== HOME ==='
+    print
+    print '=== HOME ==='
     findmnt /home
 
-    echo
-    echo '=== LVM LOGICAL VOLUMES ==='
+    print
+    print '=== LVM LOGICAL VOLUMES ==='
     sudo lvs -o lv_name,vg_name,lv_size,devices
 
-    echo
-    echo '=== LVM PHYSICAL VOLUMES ==='
+    print
+    print '=== LVM PHYSICAL VOLUMES ==='
     sudo pvs -o pv_name,pv_size,pv_free,vg_name
 
-    echo
-    echo '=== PHYSICAL DISKS ==='
+    print
+    print '=== PHYSICAL DISKS ==='
     lsblk -d -o NAME,SIZE,MODEL,SERIAL
 }
 
+_custom_register System \
+    wineprefix 'Select a named Wine prefix under ~/.wine-<name>.' \
+    mount_windows 'Mount the configured Windows NTFS volume.' \
+    unmount_windows 'Unmount /mnt/windows.' \
+    diskcheck 'Show root/home mounts, LVM state, and physical disks.'
 
-# =============================================================================
-# Projects / Application Shortcuts
-# =============================================================================
+# === Applications =============================================================
 
-# -----------------------------------------------------------------------------
-# Trading Dashboard
-# -----------------------------------------------------------------------------
+if [[ -f "$HOME/TradingDashboard/main.py" ]]; then
+    alias td='python ~/TradingDashboard/main.py &'
+    _custom_register Applications td 'Launch the Trading Dashboard.'
+fi
 
-alias td='python ~/TradingDashboard/main.py &'
+# === Capability check =========================================================
+
+tool_status() {
+    local tool
+    local -a tools=(atuin bat btop dust env_save eza fd fzf gh git kitten pacman rg tree uvx yay zoxide zsh)
+
+    printf '%-10s %s\n' TOOL STATUS
+    printf '%-10s %s\n' '----------' '------------------------------'
+
+    for tool in "${tools[@]}"; do
+        if (( $+commands[$tool] )); then
+            printf '%-10s %s\n' "$tool" "${commands[$tool]}"
+        else
+            printf '%-10s %s\n' "$tool" MISSING
+        fi
+    done
+}
+
+_custom_register Tools \
+    tool_status 'Show installed paths or MISSING status for useful command-line tools.'
