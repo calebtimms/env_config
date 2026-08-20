@@ -1,2 +1,11 @@
 [General]
-rules=
+count=1
+rules=a85a1551-32f4-4548-9e3f-f302a25a17f0
+
+[a85a1551-32f4-4548-9e3f-f302a25a17f0]
+Description=OSD - Center Monitor
+placement=0
+placementrule=2
+position=3840,1290
+positionrule=2
+types=65536

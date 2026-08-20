@@ -50,6 +50,7 @@ openai-codex
 openal
 openssh
 os-prober
+piper
 plasma-meta
 procs
 prusa-slicer
@@ -67,6 +68,7 @@ sddm
 sddm-kcm
 snap-pac
 snapper
+solaar
 steam
 stow
 sudo
