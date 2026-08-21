@@ -495,25 +495,6 @@ let g:ctrlp_prompt_mappings = {
   \ 'PrtExit()':          ['<esc>', '<c-f>'],
   \ }
 
-"""" Autocommand Configuration (Special Ordering to Ensure Expected Behavior)
-"augroup StartObsessionIfNeeded
-"  autocmd!
-"  autocmd VimEnter * call s:maybe_obsession()
-"augroup END
-"
-"function! s:maybe_obsession() abort
-"  " If Obsession is already active, or we were started with a session file, do nothing
-"  if exists('g:this_obsession') || !empty(v:this_session)
-"    return
-"  endif
-"  " Activate Obsession since it is not already in a live state
-"  execute 'Obsession'
-"endfunction
-"
-""" Enable GitGutter line highlighting and enable NERDTree by default
-"autocmd VimEnter * :GitGutterAll
-"autocmd VimEnter * :GitGutterLineHighlightsEnable
-"autocmd VimEnter * NERDTree | wincmd p
 
 " Resize all open buffers to be equally split (accounts for NERDTree opening and taking space on the left-most side of the screen)
 augroup ResizeSplits
@@ -560,12 +541,14 @@ function! s:SafePluginStartup() abort
   endif
 
   if exists(':NERDTree') == 2
-    try
-      silent NERDTree
-      silent! wincmd p
-    catch
-      " Ignore inaccessible directories and other NERDTree startup errors.
-    endtry
+    if empty($KITTY_SCROLLBACK)
+      try
+        silent NERDTree
+        silent! wincmd p
+      catch
+        " Ignore inaccessible directories and other NERDTree startup errors.
+      endtry
+    endif
   endif
 endfunction
 
