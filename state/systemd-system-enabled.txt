@@ -4,6 +4,9 @@ NetworkManager.service
 avahi-daemon.service
 avahi-daemon.socket
 bluetooth.service
+cups.path
+cups.service
+cups.socket
 getty@.service
 remote-fs.target
 sddm.service

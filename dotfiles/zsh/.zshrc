@@ -823,6 +823,9 @@ if (( $+commands[bat] )); then
     export MANPAGER="sh -c 'col -bx | bat -l man -p'"
 fi
 
+# === Miscellaneous aliases ====================================================
+alias view='feh --auto-zoom --image-bg black --scale-down'
+
 # === Package management =======================================================
 
 alias pi='sudo pacman -S'
