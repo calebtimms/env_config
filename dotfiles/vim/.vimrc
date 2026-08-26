@@ -427,12 +427,11 @@ noremap <Leader>hs <Plug>(GitGutterStageHunk)
 noremap <Leader>hu <Plug>(GitGutterUndoHunk)
 noremap <Leader>hf <Plug>(GitGutterNextHunk)
 noremap <Leader>ha <Plug>(GitGutterPrevHunk)
-set updatetime=125
+set updatetime=100
 set foldtext=gitgutter#fold#foldtext()
+let g:gitgutter_async = 1
 let g:gitgutter_max_signs = -1
-" Note: Diff base will differ for work/home. Pick the right one or suffer lots of green screens.
-"let g:gitgutter_diff_base = 'origin/master'
-let g:gitgutter_diff_base = 'origin/main'
+let g:gitgutter_diff_base = 'origin/HEAD'
 let g:gitgutter_preview_win_location = 'bel'
 
 "" Obsession Configuration
