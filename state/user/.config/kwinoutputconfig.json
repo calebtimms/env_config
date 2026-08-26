@@ -68,7 +68,7 @@
         "autoRotation": "InTabletMode",
         "automaticBrightness": false,
         "brightness": 1,
-        "colorPowerTradeoff": "PreferEfficiency",
+        "colorPowerTradeoff": "PreferAccuracy",
         "colorProfileSource": "sRGB",
         "connectorName": "DP-3",
         "customModes": [],
@@ -118,7 +118,7 @@
         "autoRotation": "InTabletMode",
         "automaticBrightness": false,
         "brightness": 0.5,
-        "colorPowerTradeoff": "PreferEfficiency",
+        "colorPowerTradeoff": "PreferAccuracy",
         "colorProfileSource": "sRGB",
         "connectorName": "DP-4",
         "customModes": [],
@@ -169,7 +169,7 @@
         "autoRotation": "InTabletMode",
         "automaticBrightness": false,
         "brightness": 1,
-        "colorPowerTradeoff": "PreferEfficiency",
+        "colorPowerTradeoff": "PreferAccuracy",
         "colorProfileSource": "sRGB",
         "connectorName": "DP-5",
         "customModes": [],
@@ -196,7 +196,7 @@
         "sharpness": 0,
         "transform": "Normal",
         "uuid": "f8ba5510-b99b-4b95-be64-d1e3eeea0a8c",
-        "vrrPolicy": "Always",
+        "vrrPolicy": "Never",
         "wideColorGamut": false
       }
     ],
@@ -265,6 +265,31 @@
               "y": 0
             },
             "priority": 0,
+            "replicationSource": ""
+          }
+        ]
+      },
+      {
+        "lidClosed": false,
+        "outputs": [
+          {
+            "enabled": true,
+            "outputIndex": 1,
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "priority": 0,
+            "replicationSource": ""
+          },
+          {
+            "enabled": true,
+            "outputIndex": 3,
+            "position": {
+              "x": 2560,
+              "y": 0
+            },
+            "priority": 1,
             "replicationSource": ""
           }
         ]

@@ -223,6 +223,22 @@ _wineprefix() {
 
 compdef _wineprefix wineprefix
 
+_headset() {
+    local -a commands
+
+    commands=(
+        'connect:Connect the WH-1000XM3'
+        'on:Connect the WH-1000XM3'
+        'disconnect:Disconnect the WH-1000XM3'
+        'off:Disconnect the WH-1000XM3'
+        'status:Show connection and battery status'
+    )
+
+    _describe 'command' commands
+}
+
+compdef _headset headset
+
 # === ZLE keybindings ===========================================================
 
 bindkey -e
@@ -823,8 +839,173 @@ if (( $+commands[bat] )); then
     export MANPAGER="sh -c 'col -bx | bat -l man -p'"
 fi
 
-# === Miscellaneous aliases ====================================================
+# === Miscellaneous aliases and functions  =====================================
 alias view='feh --auto-zoom --image-bg black --scale-down'
+
+# ============================================================
+# Sony WH-1000XM3
+# ============================================================
+
+_headset_bt() {
+    # Stable controller MAC for the Realtek USB Bluetooth dongle.
+    # Do NOT use hciN here; that numbering can change between boots.
+    local controller="8C:68:8B:80:55:7D"
+
+    {
+        print -r -- "select $controller"
+        print -rl -- "$@"
+        print -r -- "quit"
+    } | bluetoothctl --timeout 15 2>&1
+}
+
+_headset_connected() {
+    local mac="70:26:05:CF:68:8D"
+
+    _headset_bt "info $mac" |
+        grep -q 'Connected: yes'
+}
+
+_headset_audio() {
+    local mac_id="70_26_05_CF_68_8D"
+    local sink input
+    local -i attempt
+
+    # PipeWire's PulseAudio interface gives us a very easy way
+    # to identify and switch to the Bluetooth sink.
+    if ! (( $+commands[pactl] )); then
+        print -P "%F{yellow}⚠%f Connected, but pactl isn't installed; audio output unchanged"
+        return 0
+    fi
+
+    # Give PipeWire/WirePlumber time to create the headset sink.
+    for attempt in {1..20}; do
+        sink=$(
+            pactl list short sinks 2>/dev/null |
+                awk -v id="$mac_id" '
+                    $2 ~ ("^bluez_output\\." id "\\.") {
+                        print $2
+                        exit
+                    }'
+        )
+
+        [[ -n "$sink" ]] && break
+
+        sleep 0.25
+    done
+
+    if [[ -z "$sink" ]]; then
+        print -P "%F{yellow}⚠%f Connected, but headset audio sink hasn't appeared"
+        return 0
+    fi
+
+    # Make headset the destination for new audio.
+    pactl set-default-sink "$sink" >/dev/null 2>&1
+
+    # Move anything that's already playing to headset.
+    while read -r input _; do
+        [[ -n "$input" ]] &&
+            pactl move-sink-input "$input" "$sink" >/dev/null 2>&1
+    done < <(pactl list short sink-inputs 2>/dev/null)
+
+    print -P "%F{green}✓%f headset is the active audio output"
+}
+
+headset() {
+    local mac="70:26:05:CF:68:8D"
+    local output
+    local -i attempt
+
+    case "${1:-connect}" in
+
+        # ----------------------------------------------------
+        # Status
+        # ----------------------------------------------------
+        status)
+            _headset_bt "info $mac" |
+                grep -E \
+                    'Name:|Paired:|Bonded:|Trusted:|Connected:|Battery Percentage:'
+            return
+            ;;
+
+        # ----------------------------------------------------
+        # Disconnect
+        # ----------------------------------------------------
+        off|disconnect)
+            if ! _headset_connected; then
+                print -P "%F{yellow}•%f headset already disconnected"
+                return 0
+            fi
+
+            _headset_bt "disconnect $mac" >/dev/null
+
+            if _headset_connected; then
+                print -P "%F{red}✗%f Failed to disconnect headset"
+                return 1
+            fi
+
+            print -P "%F{green}✓%f headset disconnected"
+            return 0
+            ;;
+
+        # ----------------------------------------------------
+        # Connect
+        # ----------------------------------------------------
+        on|connect)
+            ;;
+
+        *)
+            echo "Usage: headset [connect|disconnect|status]"
+            return 2
+            ;;
+    esac
+
+    # --------------------------------------------------------
+    # Already connected
+    # --------------------------------------------------------
+
+    if _headset_connected; then
+        print -P "%F{green}✓%f headset already connected"
+        _headset_audio
+        return
+    fi
+
+    # --------------------------------------------------------
+    # Connect through the Realtek USB dongle
+    # --------------------------------------------------------
+
+    print -n "headset: connecting"
+
+    for attempt in {1..6}; do
+        output=$(
+            _headset_bt \
+                "power on" \
+                "connect $mac"
+        )
+
+        if _headset_connected; then
+            echo
+            print -P "%F{green}✓%f headset connected"
+            _headset_audio
+            return 0
+        fi
+
+        # This means the pairing/bond broke again rather than
+        # the headphones simply being unavailable.
+        if [[ "$output" == *"br-connection-key-missing"* ]]; then
+            echo
+            print -P "%F{red}✗%f headset Bluetooth bond is invalid"
+            print "  Re-pair the headphones with the Realtek adapter."
+            return 1
+        fi
+
+        print -n "."
+        sleep 1
+    done
+
+    echo
+    print -P "%F{red}✗%f headset isn't available"
+    return 1
+}
 
 # === Package management =======================================================
 

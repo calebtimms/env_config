@@ -31,6 +31,7 @@ inetutils
 jq
 kitty
 konsole
+kwalletmanager
 lib32-mangohud
 libreoffice-fresh
 linux
@@ -43,6 +44,7 @@ man-db
 mangohud
 mtools
 networkmanager
+nmap
 nss-mdns
 ntfs-3g
 nvidia-open
@@ -83,6 +85,7 @@ usbmuxd
 vivaldi
 vlc
 wine
+wine-mono
 winetricks
 yt-dlp
 zoxide
