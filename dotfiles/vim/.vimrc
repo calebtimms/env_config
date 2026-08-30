@@ -431,7 +431,7 @@ set updatetime=100
 set foldtext=gitgutter#fold#foldtext()
 let g:gitgutter_async = 1
 let g:gitgutter_max_signs = -1
-let g:gitgutter_diff_base = 'origin/HEAD'
+let g:gitgutter_diff_base = 'origin/main'
 let g:gitgutter_preview_win_location = 'bel'
 
 "" Obsession Configuration

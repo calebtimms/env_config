@@ -223,7 +223,7 @@ _wineprefix() {
 
 compdef _wineprefix wineprefix
 
-_headset() {
+_ears() {
     local -a commands
 
     commands=(
@@ -237,7 +237,7 @@ _headset() {
     _describe 'command' commands
 }
 
-compdef _headset headset
+compdef _ears ears
 
 # === ZLE keybindings ===========================================================
 
@@ -846,7 +846,7 @@ alias view='feh --auto-zoom --image-bg black --scale-down'
 # Sony WH-1000XM3
 # ============================================================
 
-_headset_bt() {
+_ears_bt() {
     # Stable controller MAC for the Realtek USB Bluetooth dongle.
     # Do NOT use hciN here; that numbering can change between boots.
     local controller="8C:68:8B:80:55:7D"
@@ -858,14 +858,14 @@ _headset_bt() {
     } | bluetoothctl --timeout 15 2>&1
 }
 
-_headset_connected() {
+_ears_connected() {
     local mac="70:26:05:CF:68:8D"
 
-    _headset_bt "info $mac" |
+    _ears_bt "info $mac" |
         grep -q 'Connected: yes'
 }
 
-_headset_audio() {
+_ears_audio() {
     local mac_id="70_26_05_CF_68_8D"
     local sink input
     local -i attempt
@@ -877,7 +877,7 @@ _headset_audio() {
         return 0
     fi
 
-    # Give PipeWire/WirePlumber time to create the headset sink.
+    # Give PipeWire/WirePlumber time to create the ears sink.
     for attempt in {1..20}; do
         sink=$(
             pactl list short sinks 2>/dev/null |
@@ -894,23 +894,23 @@ _headset_audio() {
     done
 
     if [[ -z "$sink" ]]; then
-        print -P "%F{yellow}⚠%f Connected, but headset audio sink hasn't appeared"
+        print -P "%F{yellow}⚠%f Connected, but ears audio sink hasn't appeared"
         return 0
     fi
 
-    # Make headset the destination for new audio.
+    # Make ears the destination for new audio.
     pactl set-default-sink "$sink" >/dev/null 2>&1
 
-    # Move anything that's already playing to headset.
+    # Move anything that's already playing to ears.
     while read -r input _; do
         [[ -n "$input" ]] &&
             pactl move-sink-input "$input" "$sink" >/dev/null 2>&1
     done < <(pactl list short sink-inputs 2>/dev/null)
 
-    print -P "%F{green}✓%f headset is the active audio output"
+    print -P "%F{green}✓%f ears is the active audio output"
 }
 
-headset() {
+ears() {
     local mac="70:26:05:CF:68:8D"
     local output
     local -i attempt
@@ -921,7 +921,7 @@ headset() {
         # Status
         # ----------------------------------------------------
         status)
-            _headset_bt "info $mac" |
+            _ears_bt "info $mac" |
                 grep -E \
                     'Name:|Paired:|Bonded:|Trusted:|Connected:|Battery Percentage:'
             return
@@ -931,19 +931,19 @@ headset() {
         # Disconnect
         # ----------------------------------------------------
         off|disconnect)
-            if ! _headset_connected; then
-                print -P "%F{yellow}•%f headset already disconnected"
+            if ! _ears_connected; then
+                print -P "%F{yellow}•%f ears already disconnected"
                 return 0
             fi
 
-            _headset_bt "disconnect $mac" >/dev/null
+            _ears_bt "disconnect $mac" >/dev/null
 
-            if _headset_connected; then
-                print -P "%F{red}✗%f Failed to disconnect headset"
+            if _ears_connected; then
+                print -P "%F{red}✗%f Failed to disconnect ears"
                 return 1
             fi
 
-            print -P "%F{green}✓%f headset disconnected"
+            print -P "%F{green}✓%f ears disconnected"
             return 0
             ;;
 
@@ -954,7 +954,7 @@ headset() {
             ;;
 
         *)
-            echo "Usage: headset [connect|disconnect|status]"
+            echo "Usage: ears [connect|disconnect|status]"
             return 2
             ;;
     esac
@@ -963,9 +963,9 @@ headset() {
     # Already connected
     # --------------------------------------------------------
 
-    if _headset_connected; then
-        print -P "%F{green}✓%f headset already connected"
-        _headset_audio
+    if _ears_connected; then
+        print -P "%F{green}✓%f ears already connected"
+        _ears_audio
         return
     fi
 
@@ -973,19 +973,19 @@ headset() {
     # Connect through the Realtek USB dongle
     # --------------------------------------------------------
 
-    print -n "headset: connecting"
+    print -n "ears: connecting"
 
     for attempt in {1..6}; do
         output=$(
-            _headset_bt \
+            _ears_bt \
                 "power on" \
                 "connect $mac"
         )
 
-        if _headset_connected; then
+        if _ears_connected; then
             echo
-            print -P "%F{green}✓%f headset connected"
-            _headset_audio
+            print -P "%F{green}✓%f ears connected"
+            _ears_audio
             return 0
         fi
 
@@ -993,7 +993,7 @@ headset() {
         # the headphones simply being unavailable.
         if [[ "$output" == *"br-connection-key-missing"* ]]; then
             echo
-            print -P "%F{red}✗%f headset Bluetooth bond is invalid"
+            print -P "%F{red}✗%f ears Bluetooth bond is invalid"
             print "  Re-pair the headphones with the Realtek adapter."
             return 1
         fi
@@ -1003,7 +1003,7 @@ headset() {
     done
 
     echo
-    print -P "%F{red}✗%f headset isn't available"
+    print -P "%F{red}✗%f ears isn't available"
     return 1
 }
 
