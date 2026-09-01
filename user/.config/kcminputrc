@@ -1,3 +1,7 @@
+[Libinput][1133][16519][Logitech G903 LS]
+PointerAcceleration=0.000
+PointerAccelerationProfile=2
+
 [Libinput][51984][8791][Keebio Quefrency Rev. 2 Consumer Control]
 ScrollFactor=2
 

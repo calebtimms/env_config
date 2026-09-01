@@ -172,6 +172,7 @@ cnoreabbrev name :echo expand('%:p') " Type ':name' in VIM command line list fil
 " Copy current filename
 cnoreabbrev cf :let @+=expand("%:p")
 cnoreabbrev ws w !sudo tee %
+cnoreabbrev so :setlocal syntax=off 
 
 function! s:EqualizeSplits() abort
   wincmd =

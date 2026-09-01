@@ -259,6 +259,19 @@ bindkey -M emacs '^[x' backward-kill-word
 bindkey -M emacs '^[u' undo
 bindkey -M emacs '^[r' redo
 
+# === ZLE editing =============================================================
+
+# Alt+Backspace: delete one path segment at a time.
+# Treat "/" as a word boundary only for this operation, leaving the global
+# WORDCHARS behavior unchanged for other ZLE navigation/editing commands.
+backward-kill-path-segment() {
+    local WORDCHARS="${WORDCHARS//\//}"
+    zle backward-kill-word
+}
+
+zle -N backward-kill-path-segment
+bindkey '^[^?' backward-kill-path-segment
+
 # === Modern tools =============================================================
 
 if (( $+commands[fzf] )); then

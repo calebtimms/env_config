@@ -1,5 +1,4 @@
 Failed to read "/efi/EFI/systemd": Permission denied
-Failed to open '/efi/loader/loader.conf': Permission denied
 System:
       Firmware: UEFI 2.90 (American Megatrends 5.26)
  Firmware Arch: x64
@@ -84,8 +83,21 @@ Boot Loaders Listed in EFI Variables:
          File: └─/efi//EFI/BOOT/BOOTX64.EFI
 
         Title: Windows Boot Manager
+           ID: 0x0008
+       Status: active, boot-order
+    Partition: /dev/disk/by-partuuid/20378438-0451-43d2-9ce1-6cf8ce85a3a2
+         File: └─/efi//EFI/Microsoft/Boot/bootmgfw.efi
+
+        Title: Windows Boot Manager
+           ID: 0x0009
+       Status: active, boot-order
+    Partition: /dev/disk/by-partuuid/2c4c4478-3836-431a-9e7d-c67adaa62967
+         File: └─/efi//EFI/Microsoft/Boot/bootmgfw.efi
+
+        Title: Windows Boot Manager
            ID: 0x0000
        Status: active
     Partition: /dev/disk/by-partuuid/0c2b5876-9ebf-4f55-b39b-449f57920941
-         File: └─/efi//EFI/Microsoft/Boot/bootmgfw.efi
+         File: └─/efi//EFI/MFailed to open '/efi/loader/loader.conf': Permission denied
+icrosoft/Boot/bootmgfw.efi
 
