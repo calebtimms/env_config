@@ -369,7 +369,9 @@ _fzf_switcher() {
                     _atuin_history_rows |
                         fzf --tac --ansi --scheme=history \
                             --delimiter=$'\x1f' --with-nth=2 --accept-nth=1 \
-                            --header="$(printf '%-7s │ %-8s │ %-10s │ %-28s │ %s' AGE STATUS DURATION DIRECTORY COMMAND)" \
+                            --header="$(printf '%s\n%-7s │ %-8s │ %-10s │ %-28s │ %s' \
+                                "Search: fuzzy=foo  exact='foo  word='foo'  exclude=!foo  │  AND=foo bar  OR=foo | bar" \
+                                AGE STATUS DURATION DIRECTORY COMMAND)" \
                             --prompt='History> ' \
                             --expect=ctrl-f,ctrl-r,ctrl-t,ctrl-g
                 )
@@ -381,7 +383,9 @@ _fzf_switcher() {
                     _atuin_history_rows --cwd . |
                         fzf --tac --ansi --scheme=history \
                             --delimiter=$'\x1f' --with-nth=2 --accept-nth=1 \
-                            --header="$(printf '%-7s │ %-8s │ %-10s │ %-28s │ %s' AGE STATUS DURATION DIRECTORY COMMAND)" \
+                            --header="$(printf '%s\n%-7s │ %-8s │ %-10s │ %-28s │ %s' \
+                                "Search: fuzzy=foo  exact='foo  word='foo'  exclude=!foo  │  AND=foo bar  OR=foo | bar" \
+                                AGE STATUS DURATION DIRECTORY COMMAND)" \
                             --prompt='Directory History> ' \
                             --expect=ctrl-f,ctrl-r,ctrl-t,ctrl-g
                 )
@@ -407,7 +411,7 @@ _fzf_switcher() {
                     FZF_DEFAULT_COMMAND="$fd_files" \
                         fzf --multi --scheme=path \
                             --prompt='Files> ' \
-                            --header='Ctrl+L: links  Ctrl+O: ignored  Ctrl+P: preview' \
+                            --header="Ctrl+L: links  Ctrl+O: ignored  Ctrl+P: preview  │  Search: fuzzy=foo  exact='foo  word='foo'  start=^foo  end=foo\$  exclude=!foo  AND=foo bar  OR=foo | bar" \
                             --preview="$file_preview" \
                             --preview-window='right:50%:hidden' \
                             --bind 'ctrl-p:toggle-preview' \
@@ -475,7 +479,7 @@ _fzf_switcher() {
                     FZF_DEFAULT_COMMAND="$fd_dirs" \
                         fzf --scheme=path \
                             --prompt='Directories> ' \
-                            --header='Ctrl+L: links  Ctrl+O: ignored  Ctrl+P: preview' \
+                            --header="Ctrl+L: links  Ctrl+O: ignored  Ctrl+P: preview  │  Search: fuzzy=foo  exact='foo  word='foo'  start=^foo  end=foo\$  exclude=!foo  AND=foo bar  OR=foo | bar" \
                             --preview="$dir_preview" \
                             --preview-window='right:50%:hidden' \
                             --bind 'ctrl-p:toggle-preview' \
