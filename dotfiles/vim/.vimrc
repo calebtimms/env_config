@@ -211,6 +211,30 @@ if has("gui_running")
     highlight DiffText   gui=BOLD guifg=#ff00ff guibg=#005f5f
 endif
 
+" Change GVim font size without changing the font.
+function! SetFontSize(size)
+    if &guifont =~# ':h\d\+$'
+        let &guifont = substitute(&guifont, ':h\d\+$', ':h' . a:size, '')
+    elseif &guifont =~# ' \d\+$'
+        let &guifont = substitute(&guifont, ' \d\+$', ' ' . a:size, '')
+    else
+        echoerr 'Could not determine font size from guifont: ' . &guifont
+    endif
+endfunction
+
+command! -nargs=1 FS call SetFontSize(<args>)
+
+" Convenient lowercase aliases.
+cnoreabbrev <expr> fs
+    \ getcmdtype() ==# ':' && getcmdline() ==# 'fs'
+    \ ? 'FS'
+    \ : 'fs'
+
+cnoreabbrev <expr> size
+    \ getcmdtype() ==# ':' && getcmdline() ==# 'size'
+    \ ? 'set guifont?'
+    \ : 'size'
+
 "" VIM diff settings
 set diffopt+=vertical,iwhite,foldcolumn:0,algorithm:histogram,indent-heuristic
 
