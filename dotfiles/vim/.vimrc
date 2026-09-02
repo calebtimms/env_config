@@ -459,6 +459,31 @@ let g:gitgutter_max_signs = -1
 let g:gitgutter_diff_base = 'origin/main'
 let g:gitgutter_preview_win_location = 'bel'
 
+" Automatically disable GitGutter while a buffer is in Vim diff mode.
+function! SyncGitGutterWithDiff() abort
+    if exists(':GitGutterBufferDisable') != 2
+        return
+    endif
+
+    if &diff
+        " Only remember disables performed automatically by this function.
+        if !get(b:, 'gitgutter_disabled_for_diff', 0)
+            silent! GitGutterBufferDisable
+            let b:gitgutter_disabled_for_diff = 1
+        endif
+    elseif get(b:, 'gitgutter_disabled_for_diff', 0)
+        silent! GitGutterBufferEnable
+        unlet b:gitgutter_disabled_for_diff
+    endif
+endfunction
+
+" Synchronize GitGutter for every visible Vim window.
+function! SyncAllGitGutterDiffWindows() abort
+    for l:win in getwininfo()
+        call win_execute(l:win.winid, 'call SyncGitGutterWithDiff()')
+    endfor
+endfunction
+
 "" Obsession Configuration
 function! s:ObWrapper(...) abort
   if a:0 == 0
@@ -580,4 +605,11 @@ augroup SafePluginStartup
   autocmd!
   autocmd VimEnter * call s:MaybeStartObsession()
   autocmd VimEnter * call s:SafePluginStartup()
+augroup END
+
+augroup GitGutterDiffMode
+    autocmd!
+    autocmd OptionSet diff call SyncAllGitGutterDiffWindows()
+    autocmd WinEnter,BufEnter,WinNew * call SyncAllGitGutterDiffWindows()
+    autocmd VimEnter * call SyncAllGitGutterDiffWindows()
 augroup END

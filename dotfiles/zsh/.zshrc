@@ -300,7 +300,7 @@ fi
 _atuin_history_rows() {
     (( $+commands[atuin] )) || return 1
 
-    atuin search "$@" \
+    atuin search "$@" --reverse \
         --human \
         --format $'{command}\x1f{relativetime}\x1f{exit}\x1f{duration}\x1f{directory}' |
         awk -F $'\x1f' -v OFS=$'\x1f' -v home="$HOME" '
@@ -367,7 +367,7 @@ _fzf_switcher() {
                 (( $+commands[atuin] )) || return 1
                 result=$(
                     _atuin_history_rows |
-                        fzf --tac --ansi --scheme=history \
+                        fzf --ansi --scheme=history \
                             --delimiter=$'\x1f' --with-nth=2 --accept-nth=1 \
                             --header="$(printf '%s\n%-7s │ %-8s │ %-10s │ %-28s │ %s' \
                                 "Search: fuzzy=foo  exact='foo  word='foo'  exclude=!foo  │  AND=foo bar  OR=foo | bar" \
@@ -381,7 +381,7 @@ _fzf_switcher() {
                 (( $+commands[atuin] )) || return 1
                 result=$(
                     _atuin_history_rows --cwd . |
-                        fzf --tac --ansi --scheme=history \
+                        fzf --ansi --scheme=history \
                             --delimiter=$'\x1f' --with-nth=2 --accept-nth=1 \
                             --header="$(printf '%s\n%-7s │ %-8s │ %-10s │ %-28s │ %s' \
                                 "Search: fuzzy=foo  exact='foo  word='foo'  exclude=!foo  │  AND=foo bar  OR=foo | bar" \
