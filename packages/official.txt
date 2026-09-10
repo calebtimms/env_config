@@ -21,6 +21,7 @@ freecad
 fzf
 git
 git-delta
+glow
 gptfdisk
 gvim
 gwenview

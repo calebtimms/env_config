@@ -1041,6 +1041,7 @@ _custom_register Packages \
 
 if (( $+commands[yay] )); then
     alias yi='yay -S'
+    alias yr='yay -Rns'
     alias ys='yay -Ss'
     alias yu='yay'
     alias yl='pacman -Qqem'

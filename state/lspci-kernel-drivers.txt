@@ -109,13 +109,13 @@ lspci: Unable to load libkmod resources: error -2
 	Kernel driver in use: r8169
 0f:00.0 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] 800 Series Chipset USB 3.x XHCI Controller [1022:43fd] (rev 01)
 	Subsystem: ASMedia Technology Inc. Device [1b21:1142]
-	Kernel driver in use: xhci_hcd
+	Kernel driver in use: xhci-pci-prom21
 10:00.0 SATA controller [0106]: Advanced Micro Devices, Inc. [AMD] 600 Series Chipset SATA Controller [1022:43f6] (rev 01)
 	Subsystem: ASMedia Technology Inc. Device [1b21:1062]
 	Kernel driver in use: ahci
 11:00.0 USB controller [0c03]: Advanced Micro Devices, Inc. [AMD] 800 Series Chipset USB 3.x XHCI Controller [1022:43fd] (rev 01)
 	Subsystem: ASMedia Technology Inc. Device [1b21:1142]
-	Kernel driver in use: xhci_hcd
+	Kernel driver in use: xhci-pci-prom21
 12:00.0 SATA controller [0106]: Advanced Micro Devices, Inc. [AMD] 600 Series Chipset SATA Controller [1022:43f6] (rev 01)
 	Subsystem: ASMedia Technology Inc. Device [1b21:1062]
 	Kernel driver in use: ahci
