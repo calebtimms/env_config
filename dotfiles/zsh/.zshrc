@@ -882,6 +882,28 @@ _ears_connected() {
         grep -q 'Connected: yes'
 }
 
+_ears_ready() {
+    local mac="70:26:05:CF:68:8D"
+    local info
+
+    info=$(_ears_bt "info $mac")
+
+    [[ "$info" == *"Connected: yes"* &&
+       "$info" == *"ServicesResolved: yes"* ]]
+}
+
+_ears_wait_ready() {
+    local -i max_attempts="${1:-20}"
+    local -i attempt
+
+    for (( attempt = 1; attempt <= max_attempts; attempt++ )); do
+        _ears_ready && return 0
+        sleep 0.25
+    done
+
+    return 1
+}
+
 _ears_audio() {
     local mac_id="70_26_05_CF_68_8D"
     local sink input
@@ -890,7 +912,7 @@ _ears_audio() {
     # PipeWire's PulseAudio interface gives us a very easy way
     # to identify and switch to the Bluetooth sink.
     if ! (( $+commands[pactl] )); then
-        print -P "%F{yellow}⚠%f Connected, but pactl isn't installed; audio output unchanged"
+        print -P "%F{yellow}⚠%f Bluetooth ready, but pactl isn't installed; audio output unchanged"
         return 0
     fi
 
@@ -911,7 +933,7 @@ _ears_audio() {
     done
 
     if [[ -z "$sink" ]]; then
-        print -P "%F{yellow}⚠%f Connected, but ears audio sink hasn't appeared"
+        print -P "%F{yellow}⚠%f Bluetooth ready, but ears audio sink hasn't appeared"
         return 0
     fi
 
@@ -940,7 +962,7 @@ ears() {
         status)
             _ears_bt "info $mac" |
                 grep -E \
-                    'Name:|Paired:|Bonded:|Trusted:|Connected:|Battery Percentage:'
+                    'Name:|Paired:|Bonded:|Trusted:|Connected:|ServicesResolved:|Battery Percentage:'
             return
             ;;
 
@@ -977,13 +999,26 @@ ears() {
     esac
 
     # --------------------------------------------------------
-    # Already connected
+    # Already connected and fully initialized
     # --------------------------------------------------------
 
-    if _ears_connected; then
+    if _ears_ready; then
         print -P "%F{green}✓%f ears already connected"
         _ears_audio
         return
+    fi
+
+    # A Bluetooth link may exist briefly before profiles have
+    # resolved. Give it a chance to finish before reconnecting.
+    if _ears_connected; then
+        if _ears_wait_ready 12; then
+            print -P "%F{green}✓%f ears already connected"
+            _ears_audio
+            return
+        fi
+
+        # The existing connection never became usable.
+        _ears_bt "disconnect $mac" >/dev/null
     fi
 
     # --------------------------------------------------------
@@ -999,20 +1034,23 @@ ears() {
                 "connect $mac"
         )
 
-        if _ears_connected; then
-            echo
-            print -P "%F{green}✓%f ears connected"
-            _ears_audio
-            return 0
-        fi
-
-        # This means the pairing/bond broke again rather than
-        # the headphones simply being unavailable.
+        # IMPORTANT: Check the Bluetooth command result before
+        # trusting Connected: yes. Authentication failures can
+        # briefly report Connected: yes before the link drops.
         if [[ "$output" == *"br-connection-key-missing"* ]]; then
             echo
             print -P "%F{red}✗%f ears Bluetooth bond is invalid"
             print "  Re-pair the headphones with the Realtek adapter."
             return 1
+        fi
+
+        # Don't declare success until Bluetooth profile/service
+        # discovery has completed.
+        if _ears_wait_ready 20; then
+            echo
+            print -P "%F{green}✓%f ears connected"
+            _ears_audio
+            return 0
         fi
 
         print -n "."
@@ -1054,29 +1092,32 @@ if (( $+commands[yay] )); then
 fi
 
 update() {
-    printf '\n--- Updating via Pacman ---\n\n'
+    {
+        printf '\n=== Arch Update: %s ===\n' "$(date '+%Y-%m-%d %H:%M:%S')" 
+        printf '\n--- Updating via Pacman ---\n\n'
 
-    if ! sudo pacman -Syu; then
-        printf '\n--- Pacman update failed; stopping ---\n\n'
-        return 1
-    fi
+        if ! sudo pacman -Syu; then
+            printf '\n--- Pacman update failed; stopping ---\n\n'
+            return 1
+        fi
 
-    local yay_rc=0
-    if (( $+commands[yay] )); then
-        printf '\n--- Updating via Yay ---\n\n'
-        yay
-        yay_rc=$?
-    fi
+        local yay_rc=0
+        if (( $+commands[yay] )); then
+            printf '\n--- Updating via Yay ---\n\n'
+            yay
+            yay_rc=$?
+        fi
 
-    if (( $+commands[env_save] )); then
-        printf '\n--- Saving Environment State ---\n\n'
-        env_save
-    fi
+        if (( $+commands[env_save] )); then
+            printf '\n--- Saving Environment State ---\n\n'
+            env_save
+        fi
 
-    printf '\n--- Refreshing Shell Completions ---\n\n'
-    completion_refresh
+        printf '\n--- Refreshing Shell Completions ---\n\n'
+        completion_refresh
 
-    return "$yay_rc"
+        return "$yay_rc"
+    } > >(tee >(sed -u $'s/\033\\[[0-9;]*[[:alpha:]]//g' > "$HOME/update.log")) 2>&1
 }
 
 completion_refresh() {

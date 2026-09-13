@@ -38,7 +38,7 @@ Keyboard Layout: n/a (not reported by firmware)
   Current Entry: arch-linux.efi
 
 Current Stub:
-        Product: systemd-stub 261.2-1-arch
+        Product: systemd-stub 261.3-1-arch
        Features: ✓ Stub reports loader partition information
                  ✓ Stub reports stub partition information
                  ✓ Stub reports network boot URL
