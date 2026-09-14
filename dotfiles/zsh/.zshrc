@@ -1091,39 +1091,105 @@ if (( $+commands[yay] )); then
         yl 'List explicitly installed foreign/AUR packages.'
 fi
 
-update() {
-    {
-        printf '\n=== Arch Update: %s ===\n' "$(date '+%Y-%m-%d %H:%M:%S')" 
-        printf '\n--- Updating via Pacman ---\n\n'
-
-        if ! sudo pacman -Syu; then
-            printf '\n--- Pacman update failed; stopping ---\n\n'
-            return 1
-        fi
-
-        local yay_rc=0
-        if (( $+commands[yay] )); then
-            printf '\n--- Updating via Yay ---\n\n'
-            yay
-            yay_rc=$?
-        fi
-
-        if (( $+commands[env_save] )); then
-            printf '\n--- Saving Environment State ---\n\n'
-            env_save
-        fi
-
-        printf '\n--- Refreshing Shell Completions ---\n\n'
-        completion_refresh
-
-        return "$yay_rc"
-    } > >(tee >(sed -u $'s/\033\\[[0-9;]*[[:alpha:]]//g' > "$HOME/update.log")) 2>&1
-}
-
 completion_refresh() {
     rehash
     rm -f "$_ZCOMPDUMP" "${_ZCOMPDUMP}.zwc"
     compinit -d "$_ZCOMPDUMP"
+}
+
+
+_update_body() {
+    local yay_rc=0
+    local rc=0
+    local sudo_keepalive_pid
+
+    printf '\n=== Arch Update: %s ===\n\n' "$(date '+%Y-%m-%d %H:%M:%S')"
+
+    # Authenticate once, inside the single PTY used for the whole update.
+    if ! sudo -v; then
+        printf '\n--- Sudo authentication failed; stopping ---\n\n'
+        return 1
+    fi
+
+    # Keep the sudo timestamp alive during long updates so Yay/env_save
+    # don't ask again if Pacman takes longer than the sudo timeout.
+    (
+        while sleep 60; do
+            sudo -n -v >/dev/null 2>&1 || exit
+        done
+    ) &!
+    sudo_keepalive_pid=$!
+
+    {
+        printf '\n--- Updating via Pacman ---\n\n'
+
+        if ! sudo pacman -Syu; then
+            printf '\n--- Pacman update failed; stopping ---\n\n'
+            rc=1
+        else
+            if (( $+commands[yay] )); then
+                printf '\n--- Updating via Yay ---\n\n'
+                yay
+                yay_rc=$?
+            fi
+
+            if (( $+commands[env_save] )); then
+                printf '\n--- Saving Environment State ---\n\n'
+                env_save
+            fi
+
+            rc=$yay_rc
+        fi
+    } always {
+        kill "$sudo_keepalive_pid" 2>/dev/null
+    }
+
+    return "$rc"
+}
+
+_update_log_clean() {
+    perl -pe '
+        # Normal CRLF -> LF.
+        s/\r\n/\n/g;
+
+        # OSC sequences: ESC ] ... BEL or ESC \
+        s/\e\].*?(?:\a|\e\\)//g;
+
+        # CSI sequences: colors, cursor movement, erase-line, etc.
+        s/\e\[[0-?]*[ -\/]*[@-~]//g;
+
+        # Remaining carriage returns are terminal redraws.
+        # Make them separate readable lines instead of smashing text together.
+        s/\r/\n/g;
+
+        # Remove stray backspaces.
+        s/\x08//g;
+    '
+}
+
+update() {
+    local update_rc completion_rc
+
+    # `script` creates ONE PTY for the entire interactive update, but does not
+    # create its own transcript file. tee displays the raw terminal stream while
+    # the second branch creates a cleaned plain-text log.
+    script -qefc 'zsh -ic _update_body' /dev/null 2>&1 |
+        tee >(_update_log_clean > "$HOME/update.log")
+
+    update_rc=${pipestatus[1]}
+
+    # This needs to affect our current shell, so keep it outside the PTY shell.
+    {
+        printf '\n--- Refreshing Shell Completions ---\n\n'
+        completion_refresh
+    } > >(
+        tee >(_update_log_clean >> "$HOME/update.log")
+    ) 2>&1
+
+    completion_rc=$?
+
+    (( update_rc != 0 )) && return "$update_rc"
+    return "$completion_rc"
 }
 
 _custom_register Shell \

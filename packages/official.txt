@@ -1,4 +1,5 @@
 amd-ucode
+asusctl
 atuin
 base
 base-devel
