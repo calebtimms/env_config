@@ -38,3 +38,5 @@ user/.ssh/*.key
 # SSH runtime/state
 user/.ssh/known_hosts
 user/.ssh/known_hosts.old
+
+wine-*.pkg.tar.zst
