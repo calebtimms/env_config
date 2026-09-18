@@ -108,6 +108,10 @@ path_prepend() {
 path_prepend "$HOME/env_config/scripts"
 export PATH
 
+
+# === Obsession Setup ===================================================================
+export OBSESSION_ROOT="${OBSESSION_ROOT:-$HOME/obsessions}"
+
 # === Prompt ===================================================================
 
 autoload -Uz vcs_info add-zsh-hook
@@ -871,32 +875,89 @@ _custom_register Git \
 export EDITOR='vim'
 export SUDO_EDITOR='vim'
 
+# ============================================================================
+# Vim / Obsession session loading
+# ============================================================================
+
+# Useful when re-sourcing ~/.zshrc after the old aliases already exist.
+unalias vl gl 2>/dev/null
+
+
+# Return the default Session.vim belonging to the current physical directory.
+#
+# Example:
+#
+#   PWD:
+#       /home/timmseh/projects/foo
+#
+#   Session:
+#       ~/obsessions/by-path/home/timmseh/projects/foo/Session.vim
+#
+_default_session_path() {
+    local physical key
+
+    physical="$(pwd -P)" || return 1
+    physical="${physical%/}"
+
+    [[ -n "$physical" ]] || physical="/"
+
+    key="${physical#/}"
+    [[ -n "$key" ]] || key="__root__"
+
+    print -r -- "$OBSESSION_ROOT/by-path/$key/Session.vim"
+}
+
+
+# Shared loader used by both vl and gl.
 _session_load() {
     local editor="$1"
     shift
 
     local session
 
-    if (( $# )); then
-        session="$1"
+    # "--" explicitly means:
+    # use this directory's default session and pass everything after
+    # "--" through to Vim.
+    if (( $# )) && [[ "$1" == "--" ]]; then
+        shift
+        session="$(_default_session_path)" || return
+
+    # An argument means a centralized named session.
+    elif (( $# )); then
+        session="${1:t}"
         shift
 
         [[ "$session" == *.vim ]] || session+=".vim"
 
-        if [[ "$session" != */* ]]; then
-            session="$HOME/obsessions/$session"
-        fi
+        session="$OBSESSION_ROOT/named/$session"
+
+    # No argument means this directory's default session.
     else
-        session="$HOME/obsessions/Session.vim"
+        session="$(_default_session_path)" || return
     fi
 
-    command "$editor" -S "$session" "$@"
+    if [[ ! -f "$session" ]]; then
+        print -u2 "No saved session:"
+        print -u2 "  $session"
+        return 1
+    fi
+
+    # Deliberately do NOT use -S here.
+    #
+    # Vim receives the desired session path through the environment,
+    # acquires its lock first, and only then sources Session.vim.
+    OBSESSION_LOAD_SESSION="$session" \
+        command "$editor" "$@"
 }
 
+
+# Terminal Vim.
 vl() {
     _session_load vim "$@"
 }
 
+
+# GUI Vim.
 gl() {
     _session_load gvim "$@"
 }
@@ -905,15 +966,16 @@ _session_complete() {
     local file
     local -a sessions
 
-    for file in "$HOME"/obsessions/*.vim(N); do
-        # Session.vim is the implicit default, so don't offer it.
-        [[ "${file:t}" == "Session.vim" ]] && continue
+    # First argument to vl/gl is an optional named session.
+    if (( CURRENT == 2 )); then
+        for file in "$OBSESSION_ROOT"/named/*.vim(N); do
+            sessions+=("${file:t:r}")
+        done
 
-        # Strip both the path and .vim extension.
-        sessions+=("${file:t:r}")
-    done
-
-    _describe 'session' sessions
+        (( ${#sessions} )) && _describe 'named session' sessions
+    else
+        _files
+    fi
 }
 
 compdef _session_complete vl
@@ -921,6 +983,8 @@ compdef _session_complete gl
 
 alias v='vim'
 alias g='gvim'
+alias vv='vim -O'
+alias vs='vim -o'
 alias vimv='vim ~/.vimrc'
 alias gvimv='gvim ~/.vimrc'
 alias sv='sudoedit'
