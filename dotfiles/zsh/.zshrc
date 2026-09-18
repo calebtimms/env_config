@@ -902,16 +902,16 @@ gl() {
 }
 
 _session_complete() {
+    local file
     local -a sessions
 
-    sessions=(
-        ${${(f)"$(command find "$HOME/obsessions" \
-            -maxdepth 1 \
-            -type f \
-            -name '*.vim' \
-            ! -name 'Session.vim' \
-            -printf '%f\n' 2>/dev/null)"}%.vim}
-    )
+    for file in "$HOME"/obsessions/*.vim(N); do
+        # Session.vim is the implicit default, so don't offer it.
+        [[ "${file:t}" == "Session.vim" ]] && continue
+
+        # Strip both the path and .vim extension.
+        sessions+=("${file:t:r}")
+    done
 
     _describe 'session' sessions
 }
