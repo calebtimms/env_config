@@ -771,6 +771,10 @@ alias gr='git config pull.rebase true && git pull'
 alias gdc='git diff'
 alias gdco='git diff > gitdiff_to_commit'
 alias gs='git status'
+alias ga='git add .'
+gc() {
+    git commit -m "$*"
+}
 
 _git_origin_ref() {
     local ref
@@ -867,10 +871,56 @@ _custom_register Git \
 export EDITOR='vim'
 export SUDO_EDITOR='vim'
 
+_session_load() {
+    local editor="$1"
+    shift
+
+    local session
+
+    if (( $# )); then
+        session="$1"
+        shift
+
+        [[ "$session" == *.vim ]] || session+=".vim"
+
+        if [[ "$session" != */* ]]; then
+            session="$HOME/obsessions/$session"
+        fi
+    else
+        session="$HOME/obsessions/Session.vim"
+    fi
+
+    command "$editor" -S "$session" "$@"
+}
+
+vl() {
+    _session_load vim "$@"
+}
+
+gl() {
+    _session_load gvim "$@"
+}
+
+_session_complete() {
+    local -a sessions
+
+    sessions=(
+        ${${(f)"$(command find "$HOME/obsessions" \
+            -maxdepth 1 \
+            -type f \
+            -name '*.vim' \
+            ! -name 'Session.vim' \
+            -printf '%f\n' 2>/dev/null)"}%.vim}
+    )
+
+    _describe 'session' sessions
+}
+
+compdef _session_complete vl
+compdef _session_complete gl
+
 alias v='vim'
 alias g='gvim'
-alias vl='vim -S'
-alias gl='gvim -S'
 alias vimv='vim ~/.vimrc'
 alias gvimv='gvim ~/.vimrc'
 alias sv='sudoedit'

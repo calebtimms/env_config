@@ -485,54 +485,52 @@ function! SyncAllGitGutterDiffWindows() abort
 endfunction
 
 "" Obsession Configuration
-function! s:ObWrapper(...) abort
-  if a:0 == 0
-    execute 'Obsession'
-  else
-    let l:file = a:1
-    if l:file !~# '\.vim$'
-      let l:file .= '.vim'
-    endif
-    execute 'Obsession ' . fnameescape(l:file)
-  endif
-endfunction
-command! -nargs=? Ob call s:ObWrapper(<f-args>)
 
-" Call custom Obsession function with ':ob'
-cnoreabbrev ob :Ob
-cnoreabbrev od :Obsession!
+" Keep all Vim sessions in one place.
+let g:obsession_dir = expand('~/obsessions')
+
+" Ensure the session directory exists.
+if !isdirectory(g:obsession_dir)
+    call mkdir(g:obsession_dir, 'p')
+endif
 
 function! s:ObWrapper(...) abort
-  if exists(':Obsession') != 2
-    return
-  endif
-
-  if a:0 == 0
-    if filewritable(getcwd()) != 2
-      return
+    if exists(':Obsession') != 2
+        return
     endif
 
-    silent! Obsession
-    return
-  endif
+    " No argument:
+    "   :ob
+    " becomes:
+    "   :Obsession ~/obsessions/Session.vim
+    if a:0 == 0
+        let l:file = 'Session.vim'
+    else
+        let l:file = a:1
 
-  let l:file = a:1
+        " Automatically add .vim when omitted.
+        if l:file !~# '\.vim$'
+            let l:file .= '.vim'
+        endif
+    endif
 
-  if l:file !~# '\.vim$'
-    let l:file .= '.vim'
-  endif
+    let l:session_path = g:obsession_dir . '/' . fnamemodify(l:file, ':t')
 
-  let l:session_path = fnamemodify(l:file, ':p')
-  let l:session_dir = fnamemodify(l:session_path, ':h')
-
-  if filewritable(l:session_dir) != 2
-    return
-  endif
-
-  execute 'silent! Obsession ' . fnameescape(l:file)
+    execute 'Obsession ' . fnameescape(l:session_path)
 endfunction
 
 command! -nargs=? Ob call s:ObWrapper(<f-args>)
+
+" Convenient lowercase aliases.
+cnoreabbrev <expr> ob
+    \ getcmdtype() ==# ':' && getcmdline() ==# 'ob'
+    \ ? 'Ob'
+    \ : 'ob'
+
+cnoreabbrev <expr> od
+    \ getcmdtype() ==# ':' && getcmdline() ==# 'od'
+    \ ? 'Obsession!'
+    \ : 'od'
 
 "" Ctrl-P Congiguration
 let g:ctrlp_map = '<C-f>'
@@ -553,28 +551,20 @@ augroup END
 
 """ Autocommand Configuration
 
-" Return true when Vim can create files in the current working directory.
-function! s:CwdIsWritable() abort
-  return filewritable(getcwd()) == 2
-endfunction
-
 function! s:MaybeStartObsession() abort
-  " Plugin is unavailable.
-  if exists(':Obsession') != 2
-    return
-  endif
+    " Plugin is unavailable.
+    if exists(':Obsession') != 2
+        return
+    endif
 
-  " Obsession is already active, or Vim was started with a session.
-  if exists('g:this_obsession') || !empty(v:this_session)
-    return
-  endif
+    " Obsession is already active, or Vim was started with a session.
+    if exists('g:this_obsession') || !empty(v:this_session)
+        return
+    endif
 
-  " A default :Obsession writes Session.vim into the current directory.
-  if !s:CwdIsWritable()
-    return
-  endif
-
-  silent! Obsession
+    " Automatically start the default session.
+    execute 'silent! Obsession '
+        \ . fnameescape(g:obsession_dir . '/Session.vim')
 endfunction
 
 function! s:SafePluginStartup() abort
