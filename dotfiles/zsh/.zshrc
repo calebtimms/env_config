@@ -396,6 +396,7 @@ _fzf_switcher() {
                 result=$(
                     _atuin_history_rows |
                         fzf --ansi --scheme=history \
+                            --no-hscroll \
                             --delimiter=$'\x1f' --with-nth=2 --accept-nth=1 \
                             --header="$(
                                 printf '%s\n' \
@@ -415,6 +416,7 @@ _fzf_switcher() {
                 result=$(
                     _atuin_history_rows --cwd . |
                         fzf --ansi --scheme=history \
+                            --no-hscroll \
                             --delimiter=$'\x1f' --with-nth=2 --accept-nth=1 \
                             --header="$(
                                 printf '%s\n' \
@@ -448,6 +450,7 @@ _fzf_switcher() {
                 result=$(
                     FZF_DEFAULT_COMMAND="$fd_files" \
                         fzf --multi --scheme=path \
+                            --no-hscroll \
                             --prompt='Files> ' \
                             --header="$(
                                 printf '%s\n' \
@@ -521,6 +524,7 @@ _fzf_switcher() {
                 result=$(
                     FZF_DEFAULT_COMMAND="$fd_dirs" \
                         fzf --scheme=path \
+                            --no-hscroll \
                             --prompt='Directories> ' \
                             --header="$(
                                 printf '%s\n' \
