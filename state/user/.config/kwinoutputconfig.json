@@ -117,9 +117,9 @@
         ],
         "autoRotation": "InTabletMode",
         "automaticBrightness": false,
-        "brightness": 0.5,
+        "brightness": 1,
         "colorPowerTradeoff": "PreferAccuracy",
-        "colorProfileSource": "sRGB",
+        "colorProfileSource": "EDID",
         "connectorName": "DP-2",
         "customModes": [],
         "detectedDdcCi": true,
@@ -131,7 +131,7 @@
         "highDynamicRange": true,
         "iccProfilePath": "",
         "maxBitsPerColor": 0,
-        "maxPeakBrightnessOverride": 1080,
+        "maxPeakBrightnessOverride": 1000,
         "mode": {
           "flags": 0,
           "height": 2160,
@@ -141,7 +141,7 @@
         "overscan": 0,
         "rgbRange": "Automatic",
         "scale": 1.5,
-        "sdrBrightness": 1080,
+        "sdrBrightness": 500,
         "sdrGamutWideness": 0,
         "sharpness": 0,
         "transform": "Normal",
@@ -290,6 +290,31 @@
               "y": 0
             },
             "priority": 1,
+            "replicationSource": ""
+          }
+        ]
+      },
+      {
+        "lidClosed": false,
+        "outputs": [
+          {
+            "enabled": true,
+            "outputIndex": 3,
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "priority": 0,
+            "replicationSource": ""
+          },
+          {
+            "enabled": true,
+            "outputIndex": 2,
+            "position": {
+              "x": 0,
+              "y": 0
+            },
+            "priority": 0,
             "replicationSource": ""
           }
         ]

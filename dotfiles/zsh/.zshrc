@@ -1241,6 +1241,7 @@ alias pi='sudo pacman -S'
 alias pr='sudo pacman -Rsu'
 alias ps='pacman -Ss'
 alias pu='sudo pacman -Syu'
+alias pq='pacman -Qn'
 alias pl='pacman -Qqen'
 
 _custom_register Packages \
@@ -1248,6 +1249,7 @@ _custom_register Packages \
     pr 'Remove packages and unneeded dependencies with pacman.' \
     ps 'Search official Arch repositories.' \
     pu 'Upgrade installed repository packages.' \
+    pq 'List installed repository packages.' \
     pl 'List explicitly installed repository packages.'
 
 if (( $+commands[yay] )); then
@@ -1255,12 +1257,14 @@ if (( $+commands[yay] )); then
     alias yr='yay -Rns'
     alias ys='yay -Ss'
     alias yu='yay'
+    alias yq='pacman -Qm'
     alias yl='pacman -Qqem'
 
     _custom_register Packages \
         yi 'Install a package through yay.' \
         ys 'Search repositories and the AUR through yay.' \
         yu 'Run yay with no preset arguments.' \
+        yq 'List installed foreign/AUR packages.' \
         yl 'List explicitly installed foreign/AUR packages.'
 fi
 
