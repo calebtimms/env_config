@@ -227,21 +227,6 @@ _wineprefix() {
 
 compdef _wineprefix wineprefix
 
-_ears() {
-    local -a commands
-
-    commands=(
-        'connect:Connect the WH-1000XM3'
-        'on:Connect the WH-1000XM3'
-        'disconnect:Disconnect the WH-1000XM3'
-        'off:Disconnect the WH-1000XM3'
-        'status:Show connection and battery status'
-    )
-
-    _describe 'command' commands
-}
-
-compdef _ears ears
 
 # === ZLE keybindings ===========================================================
 
@@ -1032,208 +1017,6 @@ fi
 alias view='feh --auto-zoom --image-bg black --scale-down'
 alias mouse-battery='solaar show 2>/dev/null | grep "Battery:" | tail -1'
 
-# ============================================================
-# Sony WH-1000XM3
-# ============================================================
-
-_ears_bt() {
-    # Stable controller MAC for the Realtek USB Bluetooth dongle.
-    # Do NOT use hciN here; that numbering can change between boots.
-    local controller="8C:68:8B:80:55:7D"
-
-    {
-        print -r -- "select $controller"
-        print -rl -- "$@"
-        print -r -- "quit"
-    } | bluetoothctl --timeout 15 2>&1
-}
-
-_ears_connected() {
-    local mac="70:26:05:CF:68:8D"
-
-    _ears_bt "info $mac" |
-        grep -q 'Connected: yes'
-}
-
-_ears_ready() {
-    local mac="70:26:05:CF:68:8D"
-    local info
-
-    info=$(_ears_bt "info $mac")
-
-    [[ "$info" == *"Connected: yes"* &&
-       "$info" == *"ServicesResolved: yes"* ]]
-}
-
-_ears_wait_ready() {
-    local -i max_attempts="${1:-20}"
-    local -i attempt
-
-    for (( attempt = 1; attempt <= max_attempts; attempt++ )); do
-        _ears_ready && return 0
-        sleep 0.25
-    done
-
-    return 1
-}
-
-_ears_audio() {
-    local mac_id="70_26_05_CF_68_8D"
-    local sink input
-    local -i attempt
-
-    # PipeWire's PulseAudio interface gives us a very easy way
-    # to identify and switch to the Bluetooth sink.
-    if ! (( $+commands[pactl] )); then
-        print -P "%F{yellow}⚠%f Bluetooth ready, but pactl isn't installed; audio output unchanged"
-        return 0
-    fi
-
-    # Give PipeWire/WirePlumber time to create the ears sink.
-    for attempt in {1..20}; do
-        sink=$(
-            pactl list short sinks 2>/dev/null |
-                awk -v id="$mac_id" '
-                    $2 ~ ("^bluez_output\\." id "\\.") {
-                        print $2
-                        exit
-                    }'
-        )
-
-        [[ -n "$sink" ]] && break
-
-        sleep 0.25
-    done
-
-    if [[ -z "$sink" ]]; then
-        print -P "%F{yellow}⚠%f Bluetooth ready, but ears audio sink hasn't appeared"
-        return 0
-    fi
-
-    # Make ears the destination for new audio.
-    pactl set-default-sink "$sink" >/dev/null 2>&1
-
-    # Move anything that's already playing to ears.
-    while read -r input _; do
-        [[ -n "$input" ]] &&
-            pactl move-sink-input "$input" "$sink" >/dev/null 2>&1
-    done < <(pactl list short sink-inputs 2>/dev/null)
-
-    print -P "%F{green}✓%f ears is the active audio output"
-}
-
-ears() {
-    local mac="70:26:05:CF:68:8D"
-    local output
-    local -i attempt
-
-    case "${1:-connect}" in
-
-        # ----------------------------------------------------
-        # Status
-        # ----------------------------------------------------
-        status)
-            _ears_bt "info $mac" |
-                grep -E \
-                    'Name:|Paired:|Bonded:|Trusted:|Connected:|ServicesResolved:|Battery Percentage:'
-            return
-            ;;
-
-        # ----------------------------------------------------
-        # Disconnect
-        # ----------------------------------------------------
-        off|disconnect)
-            if ! _ears_connected; then
-                print -P "%F{yellow}•%f ears already disconnected"
-                return 0
-            fi
-
-            _ears_bt "disconnect $mac" >/dev/null
-
-            if _ears_connected; then
-                print -P "%F{red}✗%f Failed to disconnect ears"
-                return 1
-            fi
-
-            print -P "%F{green}✓%f ears disconnected"
-            return 0
-            ;;
-
-        # ----------------------------------------------------
-        # Connect
-        # ----------------------------------------------------
-        on|connect)
-            ;;
-
-        *)
-            echo "Usage: ears [connect|disconnect|status]"
-            return 2
-            ;;
-    esac
-
-    # --------------------------------------------------------
-    # Already connected and fully initialized
-    # --------------------------------------------------------
-
-    if _ears_ready; then
-        print -P "%F{green}✓%f ears already connected"
-        _ears_audio
-        return
-    fi
-
-    # A Bluetooth link may exist briefly before profiles have
-    # resolved. Give it a chance to finish before reconnecting.
-    if _ears_connected; then
-        if _ears_wait_ready 12; then
-            print -P "%F{green}✓%f ears already connected"
-            _ears_audio
-            return
-        fi
-
-        # The existing connection never became usable.
-        _ears_bt "disconnect $mac" >/dev/null
-    fi
-
-    # --------------------------------------------------------
-    # Connect through the Realtek USB dongle
-    # --------------------------------------------------------
-
-    print -n "ears: connecting"
-
-    for attempt in {1..6}; do
-        output=$(
-            _ears_bt \
-                "power on" \
-                "connect $mac"
-        )
-
-        # IMPORTANT: Check the Bluetooth command result before
-        # trusting Connected: yes. Authentication failures can
-        # briefly report Connected: yes before the link drops.
-        if [[ "$output" == *"br-connection-key-missing"* ]]; then
-            echo
-            print -P "%F{red}✗%f ears Bluetooth bond is invalid"
-            print "  Re-pair the headphones with the Realtek adapter."
-            return 1
-        fi
-
-        # Don't declare success until Bluetooth profile/service
-        # discovery has completed.
-        if _ears_wait_ready 20; then
-            echo
-            print -P "%F{green}✓%f ears connected"
-            _ears_audio
-            return 0
-        fi
-
-        print -n "."
-        sleep 1
-    done
-
-    echo
-    print -P "%F{red}✗%f ears isn't available"
-    return 1
-}
 
 # === Package management =======================================================
 
@@ -1325,22 +1108,73 @@ _update_body() {
 }
 
 _update_log_clean() {
-    perl -pe '
-        # Normal CRLF -> LF.
+    perl -ne '
+        # Normalize line endings and remove terminal control sequences.
         s/\r\n/\n/g;
-
-        # OSC sequences: ESC ] ... BEL or ESC \
         s/\e\].*?(?:\a|\e\\)//g;
-
-        # CSI sequences: colors, cursor movement, erase-line, etc.
         s/\e\[[0-?]*[ -\/]*[@-~]//g;
-
-        # Remaining carriage returns are terminal redraws.
-        # Make them separate readable lines instead of smashing text together.
-        s/\r/\n/g;
-
-        # Remove stray backspaces.
         s/\x08//g;
+        s/\r/\n/g;
+        s/\n\z//;
+
+        my @lines = split /\n/, $_, -1;
+        @lines = ("") unless @lines;
+
+        for my $line (@lines) {
+
+            # Recognize Pacman progress bars.
+            if ($line =~ /\[[#=-]+\]\s*\d{1,3}%\s*\z/) {
+
+                # Retain completed package operations and phase summaries.
+                if ($line =~ /^\s*\(\s*(\d+)\/(\d+)\)\s+(.+?)\s+\[[#=-]+\]\s*100%\s*\z/) {
+                    my ($done, $total, $task) = ($1, $2, $3);
+
+                    if ($task =~ /^(?:upgrading|installing|downgrading|reinstalling|removing)\b/ ||
+                        ($done == $total && $task =~ /^(?:checking|loading)\b/)) {
+
+                        my $summary = sprintf("(%d/%d) %s", $done, $total, $task);
+
+                        print "$summary\n" unless $seen{$summary}++;
+                        $blank = 0;
+                    }
+                }
+
+                $after_progress = 1;
+                next;
+            }
+
+            # Track repository synchronization and package downloading.
+            if ($line =~ /^:: Synchronizing package databases/) {
+                $sync = 1;
+                $retrieving = 0;
+            } elsif ($line =~ /^:: Retrieving packages/) {
+                $retrieving = 1;
+                $sync = 0;
+            } elsif ($line =~ /^:: /) {
+                $sync = $retrieving = 0;
+            }
+
+            # Remove orphaned repository names left by terminal redraws.
+            next if $sync && $line =~ /^\s*(?:core|extra|multilib)\s*\z/;
+
+            # The package summary already contains these filenames.
+            if ($retrieving &&
+                $line =~ /^\s+\S+-\S+-(?:x86_64|any|i686)\s*\z/) {
+                $after_progress = 1;
+                next;
+            }
+
+            # Eliminate redundant blank lines.
+            if ($line =~ /^\s*\z/) {
+                next if $blank || $after_progress;
+                $blank = 1;
+            } else {
+                $blank = 0;
+                $after_progress = 0;
+            }
+
+            print "$line\n";
+        }
     '
 }
 
