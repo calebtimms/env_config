@@ -1433,12 +1433,19 @@ _update_log_clean() {
 
 update() {
     local update_rc completion_rc
+    local log_dir="$HOME/.updates"
+    local log="$log_dir/update.$(date '+%y%m%d-%H%M%S').log"
+
+    mkdir -p "$log_dir"
+
+    # ~/update.log always points to the most recent update log.
+    ln -sfn "$log" "$HOME/update.log"
 
     # `script` creates ONE PTY for the entire interactive update, but does not
     # create its own transcript file. tee displays the raw terminal stream while
     # the second branch creates a cleaned plain-text log.
     script -qefc 'zsh -ic _update_body' /dev/null 2>&1 |
-        tee >(_update_log_clean > "$HOME/update.log")
+        tee >(_update_log_clean > "$log")
 
     update_rc=${pipestatus[1]}
 
@@ -1447,7 +1454,7 @@ update() {
         printf '\n--- Refreshing Shell Completions ---\n\n'
         completion_refresh
     } > >(
-        tee >(_update_log_clean >> "$HOME/update.log")
+        tee >(_update_log_clean >> "$log")
     ) 2>&1
 
     completion_rc=$?
@@ -1518,8 +1525,8 @@ _custom_register System \
 
 # === Applications =============================================================
 
-if [[ -f "$HOME/TradingDashboard/main.py" ]]; then
-    alias td='python ~/TradingDashboard/main.py &'
+if [[ -f "$HOME/trading-dashboard/main.py" ]]; then
+    alias td='python ~/trading-dashboard/main.py &'
     _custom_register Applications td 'Launch the Trading Dashboard.'
 fi
 

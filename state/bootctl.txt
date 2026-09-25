@@ -38,7 +38,7 @@ Keyboard Layout: n/a (not reported by firmware)
   Current Entry: arch-linux.efi
 
 Current Stub:
-        Product: systemd-stub 261.3-1-arch
+        Product: systemd-stub 262-1-arch
        Features: ✓ Stub reports loader partition information
                  ✓ Stub reports stub partition information
                  ✓ Stub reports network boot URL
@@ -98,6 +98,6 @@ Boot Loaders Listed in EFI Variables:
            ID: 0x0000
        Status: active
     Partition: /dev/disk/by-partuuid/0c2b5876-9ebf-4f55-b39b-449f57920941
-         File: └─/efi//EFI/MFailed to open '/efi/loader/loader.conf': Permission denied
-icrosoft/Boot/bootmgfw.efi
+         File: └─/efi//EFI/MicFailed to open '/efi/loader/loader.conf': Permission denied
+rosoft/Boot/bootmgfw.efi
 

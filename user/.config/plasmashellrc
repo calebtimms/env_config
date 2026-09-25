@@ -12,20 +12,6 @@ shell=org.kde.plasma.desktop
 [PlasmaViews][Panel 2][Defaults]
 thickness=40
 
-[PlasmaViews][Panel 27]
-floating=1
-shell=org.kde.plasma.desktop
-
-[PlasmaViews][Panel 27][Defaults]
-thickness=46
-
-[PlasmaViews][Panel 52]
-floating=1
-shell=org.kde.plasma.desktop
-
-[PlasmaViews][Panel 52][Defaults]
-thickness=46
-
 [PlasmaViews][Panel 77]
 floating=1
 shell=org.kde.plasma.desktop

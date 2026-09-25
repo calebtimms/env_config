@@ -171,6 +171,7 @@ customDateFormat=dddd, MMM d, yyyy
 dateFormat=custom
 fontWeight=400
 showSeconds=Always
+use24hFormat=0
 
 [Containments][102][Applets][125][Configuration][ConfigDialog]
 DialogHeight=630
@@ -205,6 +206,7 @@ customDateFormat=dddd, MMM d, yyyy
 dateFormat=custom
 fontWeight=400
 showSeconds=Always
+use24hFormat=0
 
 [Containments][2][Applets][21][Configuration][ConfigDialog]
 DialogHeight=630
@@ -403,6 +405,7 @@ customDateFormat=dddd, MMM d, yyyy
 dateFormat=custom
 fontWeight=400
 showSeconds=Always
+use24hFormat=0
 
 [Containments][77][Applets][100][Configuration][ConfigDialog]
 DialogHeight=630
