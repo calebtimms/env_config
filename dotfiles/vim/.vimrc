@@ -116,11 +116,12 @@ noremap <C-r> <C-w>p
 noremap <C-[> <C-w>t
 noremap <C-]> <C-w>b
 
-" Moving the windows themselves:
-"noremap <Leader>h <C-w>H
-"noremap <Leader>j <C-w>K
-"noremap <Leader>k <C-w>J
-"noremap <Leader>l <C-w>L
+" Changes if Vim is opening man
+if !empty($VIM_MANPAGER)
+    set nonumber
+    set norelativenumber
+    set noshowmode
+endif
 
 " Resize splits
 noremap <Leader>, <C-w><
@@ -690,7 +691,7 @@ endfunction
 " Start / switch Obsession
 " ============================================================================
 
-function! s:TrackObsession(session) abort
+function! s:TrackObsession(session, force) abort
     if exists(':Obsession') != 2
         return 0
     endif
@@ -717,7 +718,11 @@ function! s:TrackObsession(session) abort
     let l:old_lock = get(g:, 'obsession_lock_dir', '')
 
     try
-        execute 'silent Obsession ' . fnameescape(l:session)
+        if a:force
+            execute 'silent Obsession! ' . fnameescape(l:session)
+        else
+            execute 'silent Obsession ' . fnameescape(l:session)
+        endif
     catch
         call s:ReleaseObsessionLockDir(l:new_lock)
         echoerr v:exception
@@ -857,15 +862,21 @@ endfunction
 "
 " :ob NAME
 "     Track ~/obsessions/named/NAME.vim.
-function! s:ObWrapper(...) abort
-    if a:0 == 0
-        call s:TrackObsession(s:DefaultObsessionPath())
+function! s:ObWrapper(force, name) abort
+    if empty(a:name)
+        call s:TrackObsession(
+            \ s:DefaultObsessionPath(),
+            \ a:force
+            \ )
     else
-        call s:TrackObsession(s:NamedObsessionPath(a:1))
+        call s:TrackObsession(
+            \ s:NamedObsessionPath(a:name),
+            \ a:force
+            \ )
     endif
 endfunction
 
-command! -nargs=? Ob call s:ObWrapper(<f-args>)
+command! -bang -nargs=? Ob call s:ObWrapper(<bang>0, <q-args>)
 
 
 " Pause Obsession and release this Vim's lock.
@@ -917,6 +928,11 @@ augroup END
 """ Autocommand Configuration
 
 function! s:MaybeStartObsession() abort
+    " Temporary viewer instances should never participate in Obsession.
+    if !empty($KITTY_SCROLLBACK) || !empty($VIM_MANPAGER)
+        return
+    endif
+
     if exists(':Obsession') != 2
         return
     endif
@@ -946,31 +962,31 @@ function! s:MaybeStartObsession() abort
 
     " Normal Vim/GVim startup:
     " begin tracking this launch directory's default Session.vim.
-    call s:TrackObsession(s:DefaultObsessionPath())
+    call s:TrackObsession(s:DefaultObsessionPath(), 0)
 endfunction
 
 function! s:SafePluginStartup() abort
-  " Each command is independently protected so one plugin cannot interrupt
-  " the rest of Vim's startup.
-
-  if exists(':GitGutterAll') == 2
-    silent! GitGutterAll
-  endif
-
-  if exists(':GitGutterLineHighlightsEnable') == 2
-    silent! GitGutterLineHighlightsEnable
-  endif
-
-  if exists(':NERDTree') == 2
-    if empty($KITTY_SCROLLBACK)
-      try
-        silent NERDTree
-        silent! wincmd p
-      catch
-        " Ignore inaccessible directories and other NERDTree startup errors.
-      endtry
+    " Don't run workspace-oriented startup behavior for temporary viewers.
+    if !empty($KITTY_SCROLLBACK) || !empty($VIM_MANPAGER)
+        return
     endif
-  endif
+
+    if exists(':GitGutterAll') == 2
+        silent! GitGutterAll
+    endif
+
+    if exists(':GitGutterLineHighlightsEnable') == 2
+        silent! GitGutterLineHighlightsEnable
+    endif
+
+    if exists(':NERDTree') == 2
+        try
+            silent NERDTree
+            silent! wincmd p
+        catch
+            " Ignore inaccessible directories and other NERDTree startup errors.
+        endtry
+    endif
 endfunction
 
 augroup SafePluginStartup

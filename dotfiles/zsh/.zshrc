@@ -271,6 +271,258 @@ if (( $+commands[fzf] )); then
     FZF_CTRL_T_COMMAND= \
     FZF_ALT_C_COMMAND= \
     source <(fzf --zsh 2>/dev/null)
+
+    # Preserve fzf's original Tab completion widget so **<Tab> still works.
+    if zle -l fzf-completion >/dev/null 2>&1; then
+        zle -A fzf-completion _fzf_completion_original
+    fi
+
+    # Completion helper for pathnames containing globs.
+    #
+    # Examples:
+    #
+    #   .venv*/li<Tab>
+    #       -> .venv*/lib
+    #
+    #   .venv*/lib6<Tab>
+    #       -> .venv*/lib64/
+    #
+    #   .venv*/lib64/<Tab>
+    #       -> list contents found beneath all matching directories
+    #
+    # Ambiguous matches are listed, never cycled through individually.
+    _glob_list_completer() {
+        setopt localoptions nullglob
+    
+        local full_prefix dir_prefix leaf
+        local parent_pattern leaf_pattern pattern
+        local parent match name
+        local -i parent_count
+    
+        local -a parents children matches dirs files
+        local -A count dir_count seen_this kind
+    
+        full_prefix="$PREFIX"
+    
+        # Split the current pathname into:
+        #
+        #   .venv*/li
+        #
+        #     dir_prefix = .venv*
+        #     leaf       = li
+        #
+        # For:
+        #
+        #   Do*/
+        #
+        #     dir_prefix = Do*
+        #     leaf       = ""
+        if [[ "$full_prefix" == */* ]]; then
+            dir_prefix="${full_prefix%/*}"
+            leaf="${full_prefix##*/}"
+        else
+            dir_prefix=""
+            leaf="$full_prefix"
+        fi
+    
+        # ------------------------------------------------------------------
+        # Glob in an earlier path component.
+        #
+        # Here we want the INTERSECTION of children beneath every directory
+        # matched by the glob.
+        #
+        # Examples:
+        #
+        #   Do*/
+        #   .venv*/li
+        #   foo*/bar*/baz
+        # ------------------------------------------------------------------
+        if [[ "$dir_prefix" == *\** ||
+              "$dir_prefix" == *\?* ||
+              "$dir_prefix" == *\[* ]]; then
+    
+            parent_pattern="$dir_prefix"
+    
+            # Parameter-expanded "~/" isn't automatically tilde-expanded when
+            # we later activate it as a glob, so handle that explicitly.
+            if [[ "$parent_pattern" == "~/"* ]]; then
+                parent_pattern="$HOME/${parent_pattern#\~/}"
+            fi
+    
+            # Only directories can act as the parents we're traversing.
+            parents=( ${~parent_pattern}(N/) )
+    
+            parent_count=${#parents}
+            (( parent_count )) || return 1
+    
+            # A glob in the final component is already a complete pattern.
+            # Otherwise we're completing a normal partial name.
+            if [[ "$leaf" == *\** ||
+                  "$leaf" == *\?* ||
+                  "$leaf" == *\[* ]]; then
+                leaf_pattern="$leaf"
+            else
+                leaf_pattern="${leaf}*"
+            fi
+    
+            # Count how many matched parent directories contain each child.
+            for parent in "${parents[@]}"; do
+                pattern="$parent/$leaf_pattern"
+                children=( ${~pattern}(N) )
+    
+                # Defensive per-parent deduplication.
+                seen_this=()
+    
+                for match in "${children[@]}"; do
+                    name="${match:t}"
+    
+                    [[ -n ${seen_this[$name]+x} ]] && continue
+                    seen_this[$name]=1
+    
+                    (( count[$name]++ ))
+    
+                    [[ -d "$match" ]] &&
+                        (( dir_count[$name]++ ))
+                done
+            done
+    
+            # Keep a name only if it appeared beneath EVERY matched parent.
+            for name in "${(@k)count}"; do
+                (( count[$name] == parent_count )) || continue
+    
+                # Treat it as a directory only if it is a directory beneath
+                # every matched parent. Otherwise don't offer "/" traversal.
+                if (( dir_count[$name] == parent_count )); then
+                    dirs+=("$name")
+                else
+                    files+=("$name")
+                fi
+            done
+    
+            (( ${#dirs} + ${#files} )) || return 1
+    
+            dirs=("${(@o)dirs}")
+            files=("${(@o)files}")
+    
+            # Preserve everything through the final slash.
+            compset -P '*/'
+    
+            # If the final component itself contains a glob, use that as a
+            # display-only filter and leave the command line untouched.
+            if [[ "$leaf" == *\** ||
+                  "$leaf" == *\?* ||
+                  "$leaf" == *\[* ]]; then
+    
+                compstate[insert]=''
+                compstate[list]='list force'
+    
+                (( ${#dirs} )) &&
+                    compadd -U -Q -S '/' -- "${dirs[@]}"
+    
+                (( ${#files} )) &&
+                    compadd -U -Q -- "${files[@]}"
+    
+            else
+                # Ordinary partial final component:
+                # insert only the lowest common unambiguous portion.
+                compstate[insert]='unambiguous'
+                compstate[list]='list force'
+    
+                (( ${#dirs} )) &&
+                    compadd -Q -S '/' -- "${dirs[@]}"
+    
+                (( ${#files} )) &&
+                    compadd -Q -- "${files[@]}"
+            fi
+    
+            return
+        fi
+    
+        # ------------------------------------------------------------------
+        # Glob only in the FINAL component.
+        #
+        # Example:
+        #
+        #   Do*
+        #
+        # In this case simply show what that glob itself matches.
+        # ------------------------------------------------------------------
+    
+        pattern="$full_prefix"
+    
+        if [[ "$pattern" == "~/"* ]]; then
+            pattern="$HOME/${pattern#\~/}"
+        fi
+    
+        matches=( ${~pattern}(N) )
+    
+        for match in "${matches[@]}"; do
+            name="${match:t}"
+    
+            if [[ -d "$match" ]]; then
+                kind[$name]="dir"
+            elif [[ -z ${kind[$name]+x} ]]; then
+                kind[$name]="file"
+            fi
+        done
+    
+        (( ${#kind} )) || return 1
+    
+        for name in "${(@ok)kind}"; do
+            if [[ "${kind[$name]}" == "dir" ]]; then
+                dirs+=("$name")
+            else
+                files+=("$name")
+            fi
+        done
+    
+        compset -P '*/'
+    
+        # The final component itself is a glob, so preserve it exactly and
+        # merely display what it matches.
+        compstate[insert]=''
+        compstate[list]='list force'
+    
+        (( ${#dirs} )) &&
+            compadd -U -Q -S '/' -- "${dirs[@]}"
+    
+        (( ${#files} )) &&
+            compadd -U -Q -- "${files[@]}"
+    }
+
+    # Real completion widget used specifically for globbed pathname listing.
+    zle -C _glob_list_widget list-choices _glob_list_completer
+
+    _smart_tab_completion() {
+        local word
+        local -a words
+
+        if [[ "$LBUFFER" == *[[:space:]] ]]; then
+            word=""
+        else
+            words=(${(z)LBUFFER})
+            word="${words[-1]-}"
+        fi
+
+        # ** explicitly invokes fzf completion.
+        if [[ "$word" == *'**'* ]] &&
+           zle -l _fzf_completion_original >/dev/null 2>&1; then
+            zle _fzf_completion_original
+
+        # Any other pathname containing a glob gets our custom completion.
+        elif [[ "$word" == *\** ||
+                "$word" == *\?* ||
+                "$word" == *\[* ]]; then
+            zle _glob_list_widget
+
+        # Everything else uses ordinary Zsh completion.
+        else
+            zle complete-word
+        fi
+    }
+
+    zle -N _smart_tab_completion
+    bindkey -M emacs '^I' _smart_tab_completion
 fi
 
 # Generic fzf invocations respect ignore files by default.
@@ -1010,7 +1262,8 @@ if (( $+commands[btop] )); then
 fi
 
 if (( $+commands[bat] )); then
-    export MANPAGER="sh -c 'col -bx | bat -l man -p'"
+    export MANROFFOPT="-c -rU0"
+    export MANPAGER="env VIM_MANPAGER=1 vim +MANPAGER --not-a-term -"
 fi
 
 # === Miscellaneous aliases and functions  =====================================
